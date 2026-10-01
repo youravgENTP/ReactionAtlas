@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -12,14 +12,22 @@ def now() -> datetime:
 
 class Reaction(Base):
     __tablename__ = "reactions"
+    __table_args__ = (
+        UniqueConstraint("series", "number", name="uq_reaction_series_number"),
+        CheckConstraint("series IN ('general', 'special')", name="ck_reaction_series"),
+        CheckConstraint("status IN ('active', 'deprecated')", name="ck_reaction_status"),
+        CheckConstraint("number > 0", name="ck_reaction_number_positive"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    rxn_index: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    series: Mapped[str] = mapped_column(String(16), index=True)
+    number: Mapped[int] = mapped_column(Integer, index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
-    category: Mapped[str | None] = mapped_column(String(255), index=True)
-    description: Mapped[str | None] = mapped_column(Text)
+    slug: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
+    summary: Mapped[str | None] = mapped_column(Text)
+    reaction_class: Mapped[str | None] = mapped_column(String(255), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
     notes: Mapped[str | None] = mapped_column(Text)
-    source_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
@@ -29,6 +37,88 @@ class Reaction(Base):
     collection_links: Mapped[list["CollectionReaction"]] = relationship(
         back_populates="reaction", cascade="all, delete-orphan"
     )
+    aliases: Mapped[list["ReactionAlias"]] = relationship(
+        back_populates="reaction", cascade="all, delete-orphan", order_by="ReactionAlias.alias"
+    )
+    outgoing_relations: Mapped[list["ReactionRelation"]] = relationship(
+        foreign_keys="ReactionRelation.source_reaction_id",
+        back_populates="source_reaction",
+        cascade="all, delete-orphan",
+    )
+    incoming_relations: Mapped[list["ReactionRelation"]] = relationship(
+        foreign_keys="ReactionRelation.target_reaction_id",
+        back_populates="target_reaction",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def display_code(self) -> str:
+        return f"Rxn{'*' if self.series == 'special' else ''}{self.number}"
+
+
+class ReactionAlias(Base):
+    __tablename__ = "reaction_aliases"
+    __table_args__ = (
+        UniqueConstraint("reaction_id", "alias", "alias_type", name="uq_reaction_alias"),
+        CheckConstraint(
+            "alias_type IN ('deprecated_index', 'alternate_name', 'abbreviation')",
+            name="ck_reaction_alias_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reaction_id: Mapped[int] = mapped_column(ForeignKey("reactions.id", ondelete="CASCADE"), index=True)
+    alias: Mapped[str] = mapped_column(String(255), index=True)
+    alias_type: Mapped[str] = mapped_column(String(32), index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+
+    reaction: Mapped[Reaction] = relationship(back_populates="aliases")
+
+
+class ReactionRelation(Base):
+    __tablename__ = "reaction_relations"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_reaction_id", "target_reaction_id", "relation_type", name="uq_reaction_relation"
+        ),
+        CheckConstraint("source_reaction_id != target_reaction_id", name="ck_reaction_relation_not_self"),
+        CheckConstraint(
+            "relation_type IN ('subtype_of', 'application_of', 'method_for', 'related_to')",
+            name="ck_reaction_relation_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_reaction_id: Mapped[int] = mapped_column(
+        ForeignKey("reactions.id", ondelete="CASCADE"), index=True
+    )
+    target_reaction_id: Mapped[int] = mapped_column(
+        ForeignKey("reactions.id", ondelete="CASCADE"), index=True
+    )
+    relation_type: Mapped[str] = mapped_column(String(32), index=True)
+
+    source_reaction: Mapped[Reaction] = relationship(
+        foreign_keys=[source_reaction_id], back_populates="outgoing_relations"
+    )
+    target_reaction: Mapped[Reaction] = relationship(
+        foreign_keys=[target_reaction_id], back_populates="incoming_relations"
+    )
+
+    @property
+    def source_display_code(self) -> str:
+        return self.source_reaction.display_code
+
+    @property
+    def source_name(self) -> str:
+        return self.source_reaction.name
+
+    @property
+    def target_display_code(self) -> str:
+        return self.target_reaction.display_code
+
+    @property
+    def target_name(self) -> str:
+        return self.target_reaction.name
 
 
 class ChemicalComponent(Base):

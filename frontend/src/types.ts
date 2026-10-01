@@ -16,17 +16,44 @@ export interface ReactionComponent {
   component: Component
 }
 
+export type ReactionSeries = 'general' | 'special'
+export type ReactionStatus = 'active' | 'deprecated'
+
+export interface ReactionAlias {
+  id: number
+  alias: string
+  alias_type: 'deprecated_index' | 'alternate_name' | 'abbreviation'
+  note: string | null
+}
+
+export interface ReactionRelation {
+  id: number
+  source_reaction_id: number
+  source_display_code: string
+  source_name: string
+  target_reaction_id: number
+  target_display_code: string
+  target_name: string
+  relation_type: 'subtype_of' | 'application_of' | 'method_for' | 'related_to'
+}
+
 export interface Reaction {
   id: number
-  rxn_index: string
+  series: ReactionSeries
+  number: number
+  display_code: string
   name: string
-  category: string | null
-  description: string | null
+  slug: string | null
+  summary: string | null
+  reaction_class: string | null
+  status: ReactionStatus
   notes: string | null
-  source_note: string | null
   created_at: string
   updated_at: string
   components: ReactionComponent[]
+  aliases: ReactionAlias[]
+  outgoing_relations: ReactionRelation[]
+  incoming_relations: ReactionRelation[]
 }
 
 export interface ComponentInput {
@@ -38,12 +65,14 @@ export interface ComponentInput {
 }
 
 export interface ReactionInput {
-  rxn_index: string
+  series: ReactionSeries
+  number: number
   name: string
-  category: string | null
-  description: string | null
+  slug: string | null
+  summary: string | null
+  reaction_class: string | null
+  status: ReactionStatus
   notes: string | null
-  source_note: string | null
   components: ComponentInput[]
 }
 

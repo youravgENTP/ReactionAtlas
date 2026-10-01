@@ -12,8 +12,9 @@ function parseCsv(text: string): ReactionInput[] {
     const values = line.split(',').map((value) => value.trim())
     const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']))
     return {
-      rxn_index: row.rxn_index, name: row.name, category: row.category || null,
-      description: row.description || null, notes: row.notes || null, source_note: row.source_note || null,
+      series: row.series === 'special' ? 'special' : 'general', number: Number(row.number), name: row.name,
+      slug: row.slug || null, summary: row.summary || null, reaction_class: row.reaction_class || null,
+      status: row.status === 'deprecated' ? 'deprecated' : 'active', notes: row.notes || null,
       components: roles.flatMap(([column, role]) => (row[column] ?? '').split(';').filter(Boolean).map((name, index) => ({ name: name.trim(), role, display_order: index }))),
     }
   })
@@ -40,7 +41,7 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
     setEditing(null); await load(''); setSearch(''); setSelected(saved)
   }
   const remove = async () => {
-    if (!selected || !window.confirm(`Delete ${selected.rxn_index} — ${selected.name}?`)) return
+    if (!selected || !window.confirm(`Delete ${selected.display_code} — ${selected.name}?`)) return
     await api.deleteReaction(selected.id); setSelected(null); await load()
   }
   const importFile = async (file: File) => {
@@ -51,7 +52,11 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
       if (Array.isArray(raw)) items = raw as ReactionInput[]
       else if (raw && typeof raw === 'object' && 'reactions' in raw) {
         const records = (raw as { reactions: Reaction[] }).reactions
-        items = records.map((r) => ({ ...r, components: r.components.map((c) => ({ name: c.component.name, role: c.role, display_order: c.display_order, detail: c.detail })) }))
+        items = records.map((r) => ({
+          series: r.series, number: r.number, name: r.name, slug: r.slug, summary: r.summary,
+          reaction_class: r.reaction_class, status: r.status, notes: r.notes,
+          components: r.components.map((c) => ({ name: c.component.name, role: c.role, display_order: c.display_order, detail: c.detail })),
+        }))
       } else throw new Error('JSON must be an array or a ReactionAtlas export')
       const result = await api.importReactions(items); window.alert(`Import complete: ${result.created} created, ${result.updated} updated.`); await load()
     } catch (jsonError) {
@@ -74,8 +79,8 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
     <div className="library-layout">
       <aside className="results-panel"><div className="panel-label">{reactions.length} {reactions.length === 1 ? 'reaction' : 'reactions'}</div>
         <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => setSelected(reaction)}>
-          <span className="rxn-index">{reaction.rxn_index}</span><strong>{reaction.name}</strong><small>{reaction.category || 'Uncategorized'}</small>
-          {search && <span className="component-hint">{reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name).join(' · ')}</span>}
+          <span className="index-line"><span className={`series-label ${reaction.series}`}>{reaction.series}</span><span className="rxn-index">{reaction.display_code}</span></span><strong>{reaction.name}</strong><small>{reaction.reaction_class || 'Unclassified'}</small>
+          {search && <span className="component-hint">{reaction.aliases.filter((a) => a.alias.toLowerCase().includes(search.toLowerCase())).map((a) => `${a.alias} (${a.alias_type.replace('_', ' ')})`).concat(reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name)).join(' · ')}</span>}
         </button>)}</div>
       </aside>
       <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} onEdit={() => setEditing(selected)} onDelete={() => void remove()} /> : <div className="empty-state"><span>RA</span><h2>No reaction selected</h2><p>Search your atlas or create a reaction record.</p></div>}</main>

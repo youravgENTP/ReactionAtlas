@@ -1,10 +1,14 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 Role = Literal["reactant", "product", "reagent", "catalyst", "solvent", "condition", "other"]
+ReactionSeries = Literal["general", "special"]
+ReactionStatus = Literal["active", "deprecated"]
+AliasType = Literal["deprecated_index", "alternate_name", "abbreviation"]
+RelationType = Literal["subtype_of", "application_of", "method_for", "related_to"]
 
 
 class ComponentCreate(BaseModel):
@@ -37,24 +41,55 @@ class ReactionComponentRead(BaseModel):
 
 
 class ReactionBase(BaseModel):
-    rxn_index: str = Field(min_length=1, max_length=64)
+    series: ReactionSeries
+    number: int = Field(gt=0)
     name: str = Field(min_length=1, max_length=255)
-    category: str | None = None
-    description: str | None = None
+    slug: str | None = Field(default=None, max_length=255)
+    summary: str | None = None
+    reaction_class: str | None = None
+    status: ReactionStatus = "active"
     notes: str | None = None
-    source_note: str | None = None
+
+    @field_validator("slug", mode="before")
+    @classmethod
+    def empty_slug_is_none(cls, value):
+        return value or None
 
 
 class ReactionCreate(ReactionBase):
     components: list[ReactionComponentInput] = Field(default_factory=list)
 
 
+class ReactionAliasRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    alias: str
+    alias_type: AliasType
+    note: str | None
+
+
+class ReactionRelationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    source_reaction_id: int
+    source_display_code: str
+    source_name: str
+    target_reaction_id: int
+    target_display_code: str
+    target_name: str
+    relation_type: RelationType
+
+
 class ReactionRead(ReactionBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    display_code: str
     created_at: datetime
     updated_at: datetime
     components: list[ReactionComponentRead]
+    aliases: list[ReactionAliasRead]
+    outgoing_relations: list[ReactionRelationRead]
+    incoming_relations: list[ReactionRelationRead]
 
 
 class CollectionBase(BaseModel):

@@ -1,15 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api } from './api'
-import type { Component, ComponentInput, Reaction, ReactionInput, Role } from './types'
+import type { Component, ComponentInput, Reaction, ReactionInput, ReactionSeries, ReactionStatus, Role } from './types'
 
 const roles: Role[] = ['reactant', 'product', 'reagent', 'catalyst', 'solvent', 'condition', 'other']
-const empty: ReactionInput = { rxn_index: '', name: '', category: '', description: '', notes: '', source_note: '', components: [] }
+const empty: ReactionInput = { series: 'general', number: 1, name: '', slug: '', summary: '', reaction_class: '', status: 'active', notes: '', components: [] }
 
 function fromReaction(reaction?: Reaction): ReactionInput {
   if (!reaction) return { ...empty, components: [] }
   return {
-    rxn_index: reaction.rxn_index, name: reaction.name, category: reaction.category,
-    description: reaction.description, notes: reaction.notes, source_note: reaction.source_note,
+    series: reaction.series, number: reaction.number, name: reaction.name, slug: reaction.slug,
+    summary: reaction.summary, reaction_class: reaction.reaction_class, status: reaction.status, notes: reaction.notes,
     components: reaction.components.map((item) => ({
       component_id: item.component.id, name: item.component.name, role: item.role,
       display_order: item.display_order, detail: item.detail,
@@ -31,7 +31,7 @@ export function ReactionForm({ reaction, onSave, onClose }: Props) {
   useEffect(() => setForm(fromReaction(reaction)), [reaction])
   useEffect(() => { void api.components().then(setKnownComponents).catch(() => undefined) }, [])
 
-  const field = (key: keyof ReactionInput, value: string) => setForm({ ...form, [key]: value })
+  const field = (key: keyof ReactionInput, value: string | number) => setForm({ ...form, [key]: value })
   const changeComponent = (index: number, patch: Partial<ComponentInput>) => {
     const components = [...form.components]
     components[index] = { ...components[index], ...patch }
@@ -54,10 +54,13 @@ export function ReactionForm({ reaction, onSave, onClose }: Props) {
       <div className="modal-title"><div><span className="eyebrow">Reaction record</span><h2>{reaction ? 'Edit reaction' : 'New reaction'}</h2></div><button type="button" className="icon-button" onClick={onClose}>×</button></div>
       {error && <div className="error">{error}</div>}
       <div className="form-grid">
-        <label>Reaction index<input required placeholder="RXN-004" value={form.rxn_index} onChange={(e) => field('rxn_index', e.target.value)} /></label>
+        <label>Series<select value={form.series} onChange={(e) => field('series', e.target.value as ReactionSeries)}><option value="general">General</option><option value="special">Special</option></select></label>
+        <label>Number<input required min="1" type="number" value={form.number} onChange={(e) => field('number', Number(e.target.value))} /></label>
         <label>Reaction name<input required placeholder="Reaction name" value={form.name} onChange={(e) => field('name', e.target.value)} /></label>
-        <label className="wide">Category<input placeholder="e.g. Amine synthesis" value={form.category ?? ''} onChange={(e) => field('category', e.target.value)} /></label>
-        <label className="wide">Description<textarea rows={2} value={form.description ?? ''} onChange={(e) => field('description', e.target.value)} /></label>
+        <label>Status<select value={form.status} onChange={(e) => field('status', e.target.value as ReactionStatus)}><option value="active">Active</option><option value="deprecated">Deprecated</option></select></label>
+        <label className="wide">Slug<input placeholder="optional-url-slug" value={form.slug ?? ''} onChange={(e) => field('slug', e.target.value || '')} /></label>
+        <label className="wide">Reaction class<input placeholder="e.g. Amine synthesis" value={form.reaction_class ?? ''} onChange={(e) => field('reaction_class', e.target.value)} /></label>
+        <label className="wide">Summary<textarea rows={2} value={form.summary ?? ''} onChange={(e) => field('summary', e.target.value)} /></label>
       </div>
       <div className="component-editor">
         <div className="section-heading"><h3>Components</h3><button type="button" className="secondary" onClick={() => setForm({ ...form, components: [...form.components, { name: '', role: 'reactant', display_order: form.components.length }] })}>+ Add component</button></div>
@@ -72,7 +75,6 @@ export function ReactionForm({ reaction, onSave, onClose }: Props) {
       </div>
       <div className="form-grid">
         <label className="wide">Notes<textarea rows={3} value={form.notes ?? ''} onChange={(e) => field('notes', e.target.value)} /></label>
-        <label className="wide">Source note<input value={form.source_note ?? ''} onChange={(e) => field('source_note', e.target.value)} /></label>
       </div>
       <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button disabled={busy}>{busy ? 'Saving…' : 'Save reaction'}</button></div>
     </form>

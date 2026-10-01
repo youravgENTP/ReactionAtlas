@@ -15,7 +15,7 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
   const reload = async () => { try { const data = await api.collections(); setCollections(data); setActive((old) => data.find((c) => c.id === old?.id) ?? null) } catch (e) { setError(e instanceof Error ? e.message : 'Could not load collections') } }
   useEffect(() => { void Promise.all([reload(), api.reactions().then(setReactions)]) }, [])
   useEffect(() => { setMarkdown(active?.markdown_content ?? '') }, [active?.id, active?.markdown_content])
-  const available = useMemo(() => reactions.filter((r) => !active?.reaction_links.some((link) => link.reaction.id === r.id) && `${r.rxn_index} ${r.name}`.toLowerCase().includes(addSearch.toLowerCase())).slice(0, 8), [reactions, active, addSearch])
+  const available = useMemo(() => reactions.filter((r) => !active?.reaction_links.some((link) => link.reaction.id === r.id) && `${r.display_code} ${r.name} ${r.aliases.map((alias) => alias.alias).join(' ')}`.toLowerCase().includes(addSearch.toLowerCase())).slice(0, 8), [reactions, active, addSearch])
 
   const create = async () => {
     const title = window.prompt('Collection title')?.trim(); if (!title) return
@@ -41,7 +41,7 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
     if (target < 0 || target >= ids.length) return; [ids[index], ids[target]] = [ids[target], ids[index]]
     const item = await api.reorder(active.id, ids); setActive(item); await reload()
   }
-  const renderedMarkdown = markdown.replace(/\[\[(RXN-[^\]]+)\]\]/gi, '[$1](reaction:$1)')
+  const renderedMarkdown = markdown.replace(/\[\[(Rxn\*?\d+)\]\]/gi, '[$1](reaction:$1)')
 
   if (!active) return <div className="collections-index"><div className="index-header"><div><span className="eyebrow">Study sets</span><h1>Collections</h1><p>Group related reactions and build a focused study document.</p></div><button onClick={() => void create()}>+ New collection</button></div>
     {error && <div className="error">{error}</div>}
@@ -54,14 +54,14 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
     {error && <div className="error page-error">{error}</div>}
     <div className="workspace-columns">
       <aside className="reaction-cards"><div className="panel-label">REACTION CARDS · {active.reaction_links.length}</div>
-        {active.reaction_links.map((link, index) => <article className="mini-card" id={`card-${link.reaction.rxn_index}`} key={link.id}>
-          <button className="card-main" onClick={() => onOpenReaction(link.reaction.rxn_index)}><span className="rxn-index">{link.reaction.rxn_index}</span><strong>{link.reaction.name}</strong><small>{link.reaction.category}</small></button>
+        {active.reaction_links.map((link, index) => <article className="mini-card" id={`card-${link.reaction.display_code}`} key={link.id}>
+          <button className="card-main" onClick={() => onOpenReaction(link.reaction.display_code)}><span className="index-line"><span className={`series-label ${link.reaction.series}`}>{link.reaction.series}</span><span className="rxn-index">{link.reaction.display_code}</span></span><strong>{link.reaction.name}</strong><small>{link.reaction.reaction_class}</small></button>
           <div className="card-controls"><button disabled={index === 0} onClick={() => void move(index, -1)}>↑</button><button disabled={index === active.reaction_links.length - 1} onClick={() => void move(index, 1)}>↓</button><button onClick={() => void remove(link.reaction.id)}>×</button></div>
         </article>)}
-        <div className="add-reaction"><input placeholder="Add reaction by index or name…" value={addSearch} onChange={(e) => setAddSearch(e.target.value)} />{addSearch && <div className="add-results">{available.map((reaction) => <button key={reaction.id} onClick={() => void add(reaction.id)}><span className="rxn-index">{reaction.rxn_index}</span>{reaction.name}</button>)}</div>}</div>
+        <div className="add-reaction"><input placeholder="Add reaction by index or name…" value={addSearch} onChange={(e) => setAddSearch(e.target.value)} />{addSearch && <div className="add-results">{available.map((reaction) => <button key={reaction.id} onClick={() => void add(reaction.id)}><span className="rxn-index">{reaction.display_code}</span>{reaction.name}</button>)}</div>}</div>
       </aside>
       <main className="document-panel"><div className="document-tabs"><div><button className={!preview ? 'active' : ''} onClick={() => setPreview(false)}>Write</button><button className={preview ? 'active' : ''} onClick={() => setPreview(true)}>Preview</button></div><span>{markdown.length} characters</span></div>
-        {preview ? <div className="markdown-preview"><ReactMarkdown components={{ a: ({ href, children }) => href?.startsWith('reaction:') ? <button className="reaction-ref" onClick={() => { const index = href.slice(9); document.getElementById(`card-${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}>{children}</button> : <a href={href}>{children}</a> }}>{renderedMarkdown}</ReactMarkdown></div> : <textarea className="markdown-editor" value={markdown} onChange={(e) => setMarkdown(e.target.value)} spellCheck={false} placeholder="# Study notes\n\nReference a reaction with [[RXN-001]]." />}
+        {preview ? <div className="markdown-preview"><ReactMarkdown components={{ a: ({ href, children }) => href?.startsWith('reaction:') ? <button className="reaction-ref" onClick={() => { const index = href.slice(9); document.getElementById(`card-${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}>{children}</button> : <a href={href}>{children}</a> }}>{renderedMarkdown}</ReactMarkdown></div> : <textarea className="markdown-editor" value={markdown} onChange={(e) => setMarkdown(e.target.value)} spellCheck={false} placeholder="# Study notes\n\nReference reactions with [[Rxn4]] or [[Rxn*4]]." />}
       </main>
     </div>
   </div>

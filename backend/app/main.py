@@ -43,14 +43,16 @@ def export_data(db: Session = Depends(get_db)):
                      for item in crud.list_reactions(db)]
     collection_data = [schemas.CollectionRead.model_validate(item).model_dump(mode="json")
                        for item in db.scalars(crud.collection_query()).unique()]
-    return {"version": 1, "reactions": reaction_data, "collections": collection_data}
+    return {"version": 2, "reactions": reaction_data, "collections": collection_data}
 
 
 @app.post("/api/import", response_model=schemas.ImportResult)
 def import_data(items: list[schemas.ReactionCreate], db: Session = Depends(get_db)):
     created = updated = 0
     for item in items:
-        existing = db.query(models.Reaction).filter(models.Reaction.rxn_index == item.rxn_index.strip()).first()
+        existing = db.query(models.Reaction).filter(
+            models.Reaction.series == item.series, models.Reaction.number == item.number
+        ).first()
         if existing:
             crud.update_reaction(db, existing.id, item)
             updated += 1

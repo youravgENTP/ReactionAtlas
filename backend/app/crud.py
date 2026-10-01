@@ -33,7 +33,12 @@ def get_or_create_component(db: Session, data: schemas.ReactionComponentInput) -
 
 def reaction_query():
     return select(models.Reaction).options(
-        selectinload(models.Reaction.components).selectinload(models.ReactionComponent.component)
+        selectinload(models.Reaction.components).selectinload(models.ReactionComponent.component),
+        selectinload(models.Reaction.aliases),
+        selectinload(models.Reaction.outgoing_relations).selectinload(models.ReactionRelation.source_reaction),
+        selectinload(models.Reaction.outgoing_relations).selectinload(models.ReactionRelation.target_reaction),
+        selectinload(models.Reaction.incoming_relations).selectinload(models.ReactionRelation.source_reaction),
+        selectinload(models.Reaction.incoming_relations).selectinload(models.ReactionRelation.target_reaction),
     )
 
 
@@ -44,27 +49,40 @@ def get_reaction(db: Session, reaction_id: int) -> models.Reaction:
     return reaction
 
 
-def list_reactions(db: Session, search: str | None = None, category: str | None = None):
+def list_reactions(db: Session, search: str | None = None, reaction_class: str | None = None):
     query = reaction_query().distinct()
     if search and search.strip():
-        pattern = f"%{search.strip()}%"
-        query = query.outerjoin(models.Reaction.components).outerjoin(models.ReactionComponent.component).where(
-            or_(
-                models.Reaction.rxn_index.ilike(pattern),
+        term = search.strip()
+        pattern = f"%{term}%"
+        code_match = re.fullmatch(r"rxn\s*(\*)?\s*(\d+)", term, re.IGNORECASE)
+        code_condition = models.Reaction.id < 0
+        if code_match:
+            code_condition = (
+                (models.Reaction.series == ("special" if code_match.group(1) else "general"))
+                & (models.Reaction.number == int(code_match.group(2)))
+            )
+        query = (
+            query.outerjoin(models.Reaction.aliases)
+            .outerjoin(models.Reaction.components)
+            .outerjoin(models.ReactionComponent.component)
+            .where(or_(
+                code_condition,
                 models.Reaction.name.ilike(pattern),
-                models.Reaction.category.ilike(pattern),
-                models.Reaction.description.ilike(pattern),
+                models.Reaction.slug.ilike(pattern),
+                models.Reaction.summary.ilike(pattern),
+                models.Reaction.reaction_class.ilike(pattern),
                 models.Reaction.notes.ilike(pattern),
-                models.Reaction.source_note.ilike(pattern),
+                models.ReactionAlias.alias.ilike(pattern),
+                models.ReactionAlias.note.ilike(pattern),
                 models.ChemicalComponent.name.ilike(pattern),
                 models.ChemicalComponent.aliases.ilike(pattern),
                 models.ReactionComponent.role.ilike(pattern),
                 models.ReactionComponent.detail.ilike(pattern),
-            )
+            ))
         )
-    if category and category.strip():
-        query = query.where(models.Reaction.category.ilike(f"%{category.strip()}%"))
-    return list(db.scalars(query.order_by(models.Reaction.rxn_index)).unique())
+    if reaction_class and reaction_class.strip():
+        query = query.where(models.Reaction.reaction_class.ilike(f"%{reaction_class.strip()}%"))
+    return list(db.scalars(query.order_by(models.Reaction.series, models.Reaction.number)).unique())
 
 
 def save_components(db: Session, reaction: models.Reaction, items: list[schemas.ReactionComponentInput]):
@@ -83,10 +101,11 @@ def save_components(db: Session, reaction: models.Reaction, items: list[schemas.
 
 
 def create_reaction(db: Session, data: schemas.ReactionCreate) -> models.Reaction:
-    if db.scalar(select(models.Reaction).where(models.Reaction.rxn_index == data.rxn_index.strip())):
-        raise HTTPException(409, f"Reaction index {data.rxn_index} already exists")
+    if db.scalar(select(models.Reaction).where(
+        models.Reaction.series == data.series, models.Reaction.number == data.number
+    )):
+        raise HTTPException(409, f"Reaction {data.series} {data.number} already exists")
     fields = data.model_dump(exclude={"components"})
-    fields["rxn_index"] = data.rxn_index.strip()
     reaction = models.Reaction(**fields)
     db.add(reaction)
     db.flush()
@@ -99,13 +118,15 @@ def update_reaction(db: Session, reaction_id: int, data: schemas.ReactionCreate)
     reaction = get_reaction(db, reaction_id)
     duplicate = db.scalar(
         select(models.Reaction).where(
-            models.Reaction.rxn_index == data.rxn_index.strip(), models.Reaction.id != reaction_id
+            models.Reaction.series == data.series,
+            models.Reaction.number == data.number,
+            models.Reaction.id != reaction_id,
         )
     )
     if duplicate:
-        raise HTTPException(409, f"Reaction index {data.rxn_index} already exists")
+        raise HTTPException(409, f"Reaction {data.series} {data.number} already exists")
     for key, value in data.model_dump(exclude={"components"}).items():
-        setattr(reaction, key, value.strip() if key == "rxn_index" else value)
+        setattr(reaction, key, value)
     save_components(db, reaction, data.components)
     db.commit()
     return get_reaction(db, reaction.id)
@@ -116,7 +137,26 @@ def collection_query():
         selectinload(models.Collection.reaction_links)
         .selectinload(models.CollectionReaction.reaction)
         .selectinload(models.Reaction.components)
-        .selectinload(models.ReactionComponent.component)
+        .selectinload(models.ReactionComponent.component),
+        selectinload(models.Collection.reaction_links)
+        .selectinload(models.CollectionReaction.reaction)
+        .selectinload(models.Reaction.aliases),
+        selectinload(models.Collection.reaction_links)
+        .selectinload(models.CollectionReaction.reaction)
+        .selectinload(models.Reaction.outgoing_relations)
+        .selectinload(models.ReactionRelation.source_reaction),
+        selectinload(models.Collection.reaction_links)
+        .selectinload(models.CollectionReaction.reaction)
+        .selectinload(models.Reaction.outgoing_relations)
+        .selectinload(models.ReactionRelation.target_reaction),
+        selectinload(models.Collection.reaction_links)
+        .selectinload(models.CollectionReaction.reaction)
+        .selectinload(models.Reaction.incoming_relations)
+        .selectinload(models.ReactionRelation.source_reaction),
+        selectinload(models.Collection.reaction_links)
+        .selectinload(models.CollectionReaction.reaction)
+        .selectinload(models.Reaction.incoming_relations)
+        .selectinload(models.ReactionRelation.target_reaction),
     )
 
 

@@ -9,8 +9,10 @@ router = APIRouter(prefix="/api/reactions", tags=["reactions"])
 
 
 @router.get("", response_model=list[schemas.ReactionRead])
-def list_reactions(search: str | None = None, category: str | None = None, db: Session = Depends(get_db)):
-    return crud.list_reactions(db, search, category)
+def list_reactions(
+    search: str | None = None, reaction_class: str | None = None, db: Session = Depends(get_db)
+):
+    return crud.list_reactions(db, search, reaction_class)
 
 
 @router.get("/{reaction_id}", response_model=schemas.ReactionRead)
