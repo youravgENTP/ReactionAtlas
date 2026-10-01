@@ -7,9 +7,10 @@ All data stays on your computer in SQLite. There is no login, cloud service, or 
 ## Project structure
 
 ```text
-backend/app/       FastAPI application, SQLAlchemy models, API routers, and seed data
+backend/app/       FastAPI application, SQLAlchemy models, API routers, and seed loader
 frontend/src/      React/TypeScript interface
-data/              Local SQLite database (created on first backend startup)
+data/reactions.json  Canonical bootstrap/reference reaction dataset tracked by Git
+data/reaction_atlas.db  Local runtime SQLite database, ignored by Git
 docs/              Project documentation
 ```
 
@@ -39,7 +40,7 @@ npm run dev
 
 Open <http://localhost:5173>. Vite proxies `/api` requests to the local backend. The database path is resolved from the repository root and is always `data/reaction_atlas.db`, regardless of the directory from which Python is started.
 
-On the first startup only, an empty database is seeded with the 16 verified reaction records described below. Existing data is never overwritten.
+SQLAlchemy models define the database schema. On the first startup only, an empty database is seeded from the 18 verified reaction records in `data/reactions.json`. Existing data is never overwritten or synchronized automatically when the canonical JSON changes.
 
 To discard the local database contents and recreate the verified seed data:
 
@@ -48,7 +49,7 @@ cd backend
 python -m app.reset_db
 ```
 
-This resets only the SQLite application tables in `data/reaction_atlas.db`; it does not touch configuration or uploaded assets.
+This resets only the SQLite application tables in `data/reaction_atlas.db`, validates `data/reactions.json`, and loads it in one transaction. It does not touch configuration or uploaded assets. To add or correct a canonical bootstrap reaction, edit `data/reactions.json` rather than `backend/app/seed.py`, then run the reset command when you intentionally want to rebuild the runtime database.
 
 ## Using the reaction library
 
@@ -77,6 +78,8 @@ The right side is a plain Markdown editor with a rendered preview. Use `[[Rxn4]]
 
 Import updates an existing reaction when its `(series, number)` pair matches and creates it otherwise. Exported collections are included for portability, but import intentionally imports reaction records only.
 
+Runtime import/export JSON and `data/reactions.json` serve different purposes. Runtime exports are user-data snapshots produced by the API. The tracked canonical JSON is curated bootstrap/reference data consumed only when initializing an empty database or running the explicit reset command; changes are not continuously synchronized into SQLite.
+
 CSV import is also supported in the browser. Use this header (optional text columns may be omitted):
 
 ```csv
@@ -94,7 +97,7 @@ Separate multiple values within a component column with a semicolon (`;`). V1 CS
 - `POST/DELETE /api/collections/{id}/reactions...` and `PUT /api/collections/{id}/reorder`
 - `GET /api/export`, `POST /api/import`, `GET /api/health`
 
-Reaction responses expose `series`, `number`, derived `display_code`, `name`, optional `slug`, `summary`, `reaction_class`, `status`, `notes`, aliases, and incoming/outgoing generic relations. The database enforces unique `(series, number)` pairs. Seeded relations use `subtype_of` for Amidation → Nucleophilic Acyl Substitution, because Amidation is modeled as the more specific reaction, and `method_for` for both reduction methods → Nitrile Reduction.
+Reaction responses expose `series`, `number`, derived `display_code`, `name`, optional `slug`, `summary`, `reaction_class`, `status`, `notes`, aliases, and incoming/outgoing generic relations. The database enforces unique `(series, number)` pairs. The seed loader validates the JSON schema version, values, unique reaction indices, and all alias/relation references before inserting reactions, aliases, and relations in a single transaction.
 
 ## Intentionally outside V1
 

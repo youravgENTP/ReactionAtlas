@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "reactions": [
+    {
+      "series": "general",
+      "number": 1,
+      "name": "Nitrile + Grignard → Ketone",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 2,
+      "name": "Nitrile Hydrolysis",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 4,
+      "name": "Imine Formation",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 5,
+      "name": "Transamidation",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 6,
+      "name": "Thionation / Thioamide Formation",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 7,
+      "name": "Nucleophilic Acyl Substitution",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 8,
+      "name": "Amidation via COOH Activation",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 9,
+      "name": "Nitro Reduction",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 10,
+      "name": "Nitrile Reduction",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 11,
+      "name": "Metal-Catalyzed Hydrogenation",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 12,
+      "name": "Hydride-Donor Reduction",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 13,
+      "name": "Halogenation",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "general",
+      "number": 14,
+      "name": "Amidation via Acyl Substitution with X / Ester / Anhydride LG",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "special",
+      "number": 3,
+      "name": "Triazole Ring Formation",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "special",
+      "number": 4,
+      "name": "Mannich Reaction",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "special",
+      "number": 5,
+      "name": "Eschweiler–Clarke Reaction",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "special",
+      "number": 6,
+      "name": "Michael Reaction",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    },
+    {
+      "series": "special",
+      "number": 7,
+      "name": "Gewald Reaction",
+      "slug": null,
+      "summary": null,
+      "reaction_class": null,
+      "status": "active",
+      "notes": null
+    }
+  ],
+  "aliases": [
+    {
+      "alias": "Rxn3",
+      "alias_type": "deprecated_index",
+      "target": {
+        "series": "general",
+        "number": 10
+      },
+      "note": "Older reaction index corrected to Rxn10."
+    }
+  ],
+  "relations": [
+    {
+      "source": {
+        "series": "general",
+        "number": 14
+      },
+      "target": {
+        "series": "general",
+        "number": 7
+      },
+      "relation_type": "subtype_of"
+    },
+    {
+      "source": {
+        "series": "general",
+        "number": 8
+      },
+      "target": {
+        "series": "general",
+        "number": 14
+      },
+      "relation_type": "related_to"
+    },
+    {
+      "source": {
+        "series": "general",
+        "number": 11
+      },
+      "target": {
+        "series": "general",
+        "number": 10
+      },
+      "relation_type": "method_for"
+    },
+    {
+      "source": {
+        "series": "general",
+        "number": 12
+      },
+      "target": {
+        "series": "general",
+        "number": 10
+      },
+      "relation_type": "method_for"
+    }
+  ]
+}

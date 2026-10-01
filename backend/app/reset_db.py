@@ -6,8 +6,14 @@ def main() -> None:
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
-        seed_database(db)
-    print("Reset data/reaction_atlas.db and loaded verified reaction data.")
+        counts = seed_database(db)
+    if counts is None:
+        raise RuntimeError("Database reset completed, but seed data was not loaded")
+    print("Loaded:")
+    print(f"{counts['general']} general reactions")
+    print(f"{counts['special']} special reactions")
+    print(f"{counts['aliases']} alias")
+    print(f"{counts['relations']} relations")
 
 
 if __name__ == "__main__":
