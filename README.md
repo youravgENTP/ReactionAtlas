@@ -18,27 +18,47 @@ docs/              Project documentation
 
 Python 3.10+ and a current Node.js/npm installation are required.
 
-Start the backend in one terminal:
+Install the backend, frontend, and root development dependencies once:
 
 ```bash
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-./run.sh
+.venv/bin/python -m pip install -r requirements.txt
+cd ..
+npm --prefix frontend install
+npm install
 ```
 
-The API is available at <http://127.0.0.1:8000>; interactive API documentation is at <http://127.0.0.1:8000/docs>.
-
-Start the frontend in a second terminal:
+Then start both the frontend and backend from the project root with one command:
 
 ```bash
-cd frontend
-npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>. Vite proxies `/api` requests to the local backend. The database path is resolved from the repository root and is always `data/reaction_atlas.db`, regardless of the directory from which Python is started.
+Open <http://localhost:5173>. The API is available at <http://127.0.0.1:8000>, and interactive API documentation is at <http://127.0.0.1:8000/docs>. Vite proxies `/api` requests to the local backend. Press `Ctrl+C` once in the root terminal to stop both development servers. The backend command uses `backend/.venv/bin/python` directly, so it does not depend on the shell's active Python or conda environment.
+
+### Troubleshooting: run services separately
+
+To isolate frontend issues, run the frontend from the project root:
+
+```bash
+npm --prefix frontend run dev
+```
+
+To isolate backend issues, run the backend from the project root with its virtual environment's Python explicitly:
+
+```bash
+cd backend && .venv/bin/python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+The existing backend helper remains available when the intended Python environment is already active:
+
+```bash
+cd backend
+./run.sh
+```
+
+The database path is resolved from the repository root and is always `data/reaction_atlas.db`, regardless of the directory from which Python is started.
 
 SQLAlchemy models define the database schema. On the first startup only, an empty database is seeded from the 18 verified reaction records in `data/reactions.json`. Existing data is never overwritten or synchronized automatically when the canonical JSON changes.
 

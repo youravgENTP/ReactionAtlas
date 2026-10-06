@@ -1,0 +1,11 @@
+{
+  "name": "reaction-atlas",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently --kill-others --names frontend,backend \"npm --prefix frontend run dev\" \"cd backend && .venv/bin/python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
