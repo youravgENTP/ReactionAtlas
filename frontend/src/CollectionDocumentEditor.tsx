@@ -63,9 +63,17 @@ export function RichEditor({ value, heading, singleLine = false, placeholder, on
   const lastEmittedHtml = useRef<string | undefined>(undefined)
   const { shortcuts } = useLatex()
   useEffect(() => {
-    const desired = formatScriptHtml(value.html ?? escapeHtml(value.text).replace(/\n/g, '<br>'))
+    // HTML emitted while the user is typing may intentionally contain an unfinished
+    // trailing _x/^x sequence. Re-formatting it here replaces the editable DOM and
+    // drops the browser selection, which makes the field appear to stop accepting
+    // input. Only derive script HTML from legacy/plain-text values; emitted HTML is
+    // already normalized at the appropriate input boundary.
+    const desired = value.html !== undefined
+      ? sanitizeRichHtml(value.html)
+      : formatScriptHtml(escapeHtml(value.text).replace(/\n/g, '<br>'))
     if (!editor.current || lastEmittedHtml.current === desired) return
     if (editor.current.innerHTML !== desired) editor.current.innerHTML = desired
+    lastEmittedHtml.current = desired
   }, [value.html, value.text])
   const emit = (includeEnd = false) => {
     if (!editor.current) return

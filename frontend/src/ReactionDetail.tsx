@@ -27,10 +27,12 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave }: { reactio
   const dirty = JSON.stringify(draft) !== JSON.stringify(original)
   const value = (key: RichKey): RichTextValue => ({ text: String(draft[key] ?? ''), html: draft.rich_text?.[key] })
   const change = (key: RichKey, content: RichTextValue) => {
-    const richText = { ...(draft.rich_text ?? {}) }
-    const text = content.text.trim() ? content.text : ''
-    if (text && content.html) richText[key] = content.html; else delete richText[key]
-    setDraft({ ...draft, [key]: text, rich_text: richText })
+    setDraft((current) => {
+      const richText = { ...(current.rich_text ?? {}) }
+      const text = content.text.trim() ? content.text : ''
+      if (text && content.html) richText[key] = content.html; else delete richText[key]
+      return { ...current, [key]: text, rich_text: richText }
+    })
   }
   const save = async () => {
     if (!draft.name.trim()) { setError('Reaction name is required'); return }

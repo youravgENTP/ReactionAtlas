@@ -56,6 +56,9 @@ class Reaction(Base):
     rich_text_record: Mapped["ReactionRichText | None"] = relationship(
         back_populates="reaction", cascade="all, delete-orphan", uselist=False
     )
+    drug_links: Mapped[list["DrugReaction"]] = relationship(
+        back_populates="reaction", cascade="all, delete-orphan"
+    )
 
     @property
     def display_code(self) -> str:
@@ -245,3 +248,75 @@ class AppSetting(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class Drug(Base):
+    __tablename__ = "drugs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    chapters_json: Mapped[str] = mapped_column(Text, default="[]")
+    functions_json: Mapped[str] = mapped_column(Text, default="[]")
+    aliases_json: Mapped[str] = mapped_column(Text, default="[]")
+    image_directory: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+    reaction_links: Mapped[list["DrugReaction"]] = relationship(
+        back_populates="drug", cascade="all, delete-orphan", order_by="DrugReaction.display_order"
+    )
+    image_links: Mapped[list["DrugImage"]] = relationship(
+        back_populates="drug", cascade="all, delete-orphan", order_by="DrugImage.display_order"
+    )
+
+    @staticmethod
+    def _decode_list(value: str) -> list[str]:
+        import json
+        try:
+            decoded = json.loads(value)
+            return [str(item) for item in decoded] if isinstance(decoded, list) else []
+        except (TypeError, ValueError):
+            return []
+
+    @property
+    def chapters(self) -> list[str]:
+        return self._decode_list(self.chapters_json)
+
+    @property
+    def functions(self) -> list[str]:
+        return self._decode_list(self.functions_json)
+
+    @property
+    def aliases(self) -> list[str]:
+        return self._decode_list(self.aliases_json)
+
+
+class DrugReaction(Base):
+    __tablename__ = "drug_reactions"
+    __table_args__ = (UniqueConstraint("drug_id", "reaction_id", name="uq_drug_reaction"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    drug_id: Mapped[int] = mapped_column(ForeignKey("drugs.id", ondelete="CASCADE"), index=True)
+    reaction_id: Mapped[int] = mapped_column(ForeignKey("reactions.id", ondelete="CASCADE"), index=True)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    drug: Mapped[Drug] = relationship(back_populates="reaction_links")
+    reaction: Mapped[Reaction] = relationship(back_populates="drug_links")
+
+
+class DrugImage(Base):
+    __tablename__ = "drug_images"
+    __table_args__ = (UniqueConstraint("drug_id", "source_path", name="uq_drug_image_source"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    drug_id: Mapped[int] = mapped_column(ForeignKey("drugs.id", ondelete="CASCADE"), index=True)
+    media_asset_id: Mapped[str] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    source_path: Mapped[str] = mapped_column(String(700))
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    drug: Mapped[Drug] = relationship(back_populates="image_links")
+    asset: Mapped[MediaAsset] = relationship()

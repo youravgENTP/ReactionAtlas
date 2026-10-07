@@ -22,5 +22,12 @@ data/*.sqlite
 data/*.sqlite3
 data/media/
 
+# Local backups (directory documentation remains tracked)
+backups/*.zip
+backups/.*.tmp
+
+# Local drug image import folders (instructions remain tracked)
+drug-images/*/
+
 # Logs
 *.log

@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -6,8 +8,24 @@ from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
 from .database import Base, engine, get_db
-from .routers import collections, components, media, reactions, settings
+from .backup import backup_if_due, seconds_until_backup
+from .routers import backups, collections, components, drugs, media, reactions, settings
 from .seed import seed_database
+
+
+logger = logging.getLogger(__name__)
+
+
+async def backup_loop():
+    while True:
+        try:
+            await asyncio.sleep(max(1, await asyncio.to_thread(seconds_until_backup)))
+            await asyncio.to_thread(backup_if_due)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Scheduled ReactionAtlas backup failed")
+            await asyncio.sleep(300)
 
 
 @asynccontextmanager
@@ -16,7 +34,19 @@ async def lifespan(_: FastAPI):
     from .database import SessionLocal
     with SessionLocal() as db:
         seed_database(db)
-    yield
+    try:
+        await asyncio.to_thread(backup_if_due)
+    except Exception:
+        logger.exception("Startup ReactionAtlas backup failed")
+    backup_task = asyncio.create_task(backup_loop())
+    try:
+        yield
+    finally:
+        backup_task.cancel()
+        try:
+            await backup_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="ReactionAtlas API", version="1.0.0", lifespan=lifespan)
@@ -32,6 +62,8 @@ app.include_router(components.router)
 app.include_router(collections.router)
 app.include_router(media.router)
 app.include_router(settings.router)
+app.include_router(backups.router)
+app.include_router(drugs.router)
 
 
 @app.get("/api/health")

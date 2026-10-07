@@ -1,4 +1,4 @@
-import type { Collection, Component, LatexShortcut, MediaAsset, Reaction, ReactionInput, ReactionRichTextInput } from './types'
+import type { BackupStatus, Collection, Component, Drug, DrugImportInput, DrugImportResult, LatexShortcut, MediaAsset, Reaction, ReactionInput, ReactionRichTextInput } from './types'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -36,6 +36,10 @@ export const api = {
   importReactions: (data: ReactionInput[]) => request<{ created: number; updated: number }>('/api/import', { method: 'POST', body: JSON.stringify(data) }),
   latexShortcuts: () => request<LatexShortcut[]>('/api/settings/latex-shortcuts'),
   saveLatexShortcuts: (data: LatexShortcut[]) => request<LatexShortcut[]>('/api/settings/latex-shortcuts', { method: 'PUT', body: JSON.stringify(data) }),
+  backupStatus: () => request<BackupStatus>('/api/backups/status'),
+  createBackup: () => request<BackupStatus>('/api/backups', { method: 'POST' }),
+  drugs: () => request<Drug[]>('/api/drugs'),
+  importDrugs: (data: DrugImportInput[]) => request<DrugImportResult>('/api/drugs/import', { method: 'POST', body: JSON.stringify(data) }),
   uploadImage: async (file: File) => {
     const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
       const image = new Image(); const url = URL.createObjectURL(file)

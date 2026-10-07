@@ -75,6 +75,64 @@ export interface LatexShortcut {
   replacement: string
 }
 
+export interface BackupStatus {
+  directory: string
+  interval_hours: number
+  latest_filename: string | null
+  latest_created_at: string | null
+  latest_size_bytes: number | null
+  next_due_at: string
+  created_filename?: string
+}
+
+export interface DrugImage {
+  id: number
+  source_path: string
+  display_order: number
+  asset: MediaAsset
+}
+
+export interface DrugReactionLink {
+  id: number
+  display_order: number
+  reaction: Reaction
+}
+
+export interface Drug {
+  id: number
+  name: string
+  slug: string
+  description: string | null
+  chapters: string[]
+  functions: string[]
+  aliases: string[]
+  image_directory: string
+  created_at: string
+  updated_at: string
+  image_links: DrugImage[]
+  reaction_links: DrugReactionLink[]
+}
+
+export interface DrugImportInput {
+  name: string
+  slug?: string | null
+  description?: string | null
+  chapters?: string[]
+  functions?: string[]
+  aliases?: string[]
+  image_directory?: string | null
+  reaction_codes?: string[]
+  reactions?: string[]
+}
+
+export interface DrugImportResult {
+  created: number
+  updated: number
+  images_uploaded: number
+  reactions_linked: number
+  warnings: string[]
+}
+
 export interface ComponentInput {
   component_id?: number
   name?: string

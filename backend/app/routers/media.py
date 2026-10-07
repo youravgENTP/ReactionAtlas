@@ -78,6 +78,8 @@ def delete_media(asset_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Image not found")
     if db.scalar(select(models.ReactionImage).where(models.ReactionImage.media_asset_id == asset_id)):
         raise HTTPException(409, "Image is still used by a reaction")
+    if db.scalar(select(models.DrugImage).where(models.DrugImage.media_asset_id == asset_id)):
+        raise HTTPException(409, "Image is still used by a drug")
     path = MEDIA_DIR / asset.stored_filename
     db.delete(asset)
     db.commit()

@@ -11,6 +11,7 @@ backend/app/       FastAPI application, SQLAlchemy models, API routers, and seed
 frontend/src/      React/TypeScript interface
 data/reactions.json  Canonical bootstrap/reference reaction dataset tracked by Git
 data/reaction_atlas.db  Local runtime SQLite database, ignored by Git
+drug-images/       Per-drug source image folders used by the bulk importer
 docs/              Project documentation
 ```
 
@@ -95,6 +96,29 @@ Create a collection from the **Collections** page, then open it to use the study
 
 The right side is a block document editor. Add rich-text paragraphs, headings, images, dividers, and embedded cards for reactions already linked to the collection. Text blocks include bold, italic, underline, highlight, color, and the same LaTeX shortcuts used by the reaction form. Images can be selected, dropped, or pasted and then resized and aligned. Select **Save** to persist the document and collection metadata to SQLite. Existing Markdown collections open as a compatible text block and are converted to the document format when saved.
 
+## Drug database
+
+The **Drug Database** starts empty. It groups imported drugs by chapter and function and connects each drug's synthesis to existing Rxn Library records. Selecting a linked synthesis reaction opens that reaction in the Reaction Library.
+
+Bulk import accepts a JSON array, or an object containing a `drugs` array. Create one source-image directory per drug under `drug-images/`, then select **Import JSON**. The importer recursively discovers JPEG, PNG, GIF, and WebP files up to 8 MB, copies them into managed media storage, and links reaction codes only when they exist in the Rxn Library. Re-importing the same slug updates metadata, reaction links, and changed images without duplicating records.
+
+```json
+[
+  {
+    "name": "Example drug",
+    "slug": "example-drug",
+    "chapters": ["Chapter name"],
+    "functions": ["Functional category"],
+    "aliases": [],
+    "description": "Optional notes",
+    "image_directory": "drug-images/example-drug",
+    "reaction_codes": ["Rxn1", "Rxn*2"]
+  }
+]
+```
+
+When `image_directory` is omitted, it defaults to `drug-images/<slug>/`; a missing directory is created and reported as having no images. For safety, imports can only read image directories contained within the project's `drug-images/` directory. See `drug-images/README.md` for the same format near the source folders.
+
 ## Import and export
 
 **Export** in the reaction library downloads a versioned JSON snapshot containing reactions and collections. **Import** accepts either:
@@ -105,6 +129,12 @@ The right side is a block document editor. Add rich-text paragraphs, headings, i
 Import updates an existing reaction when its `(series, number)` pair matches and creates it otherwise. Exported collections are included for portability, but import intentionally imports reaction records only.
 
 Runtime import/export JSON and `data/reactions.json` serve different purposes. Runtime exports are user-data snapshots produced by the API. The tracked canonical JSON is curated bootstrap/reference data consumed only when initializing an empty database or running the explicit reset command; changes are not continuously synchronized into SQLite.
+
+## Automatic backups
+
+While the backend is running, ReactionAtlas creates a timestamped ZIP archive in `backups/` every 12 hours. On startup it also creates a catch-up backup when the latest archive is at least 12 hours old. Each archive contains a transactionally consistent SQLite snapshot, uploaded files from `data/media/`, the canonical `data/reactions.json`, and a checksum manifest. Existing archives are retained; ReactionAtlas does not delete them automatically.
+
+Open **Settings → Backups** to see the latest archive, the next scheduled time, and the local backup directory, or to create a backup immediately. The generated ZIP files are ignored by Git, while `backups/README.md` remains tracked.
 
 CSV import is also supported in the browser. Use this header (optional text columns may be omitted):
 
@@ -124,6 +154,8 @@ Separate multiple values within a component column with a semicolon (`;`). V1 CS
 - `POST/DELETE /api/collections/{id}/reactions...` and `PUT /api/collections/{id}/reorder`
 - `POST /api/media`, `GET /api/media/{id}/content`
 - `GET/PUT /api/settings/latex-shortcuts`
+- `GET /api/backups/status`, `POST /api/backups`
+- `GET /api/drugs`, `GET/DELETE /api/drugs/{id}`, `POST /api/drugs/import`
 - `GET /api/export`, `POST /api/import`, `GET /api/health`
 
 Reaction responses expose `series`, `number`, derived `display_code`, `name`, optional `slug`, `summary`, `reaction_class`, `status`, `notes`, aliases, and incoming/outgoing generic relations. The database enforces unique `(series, number)` pairs. The seed loader validates the JSON schema version, values, unique reaction indices, and all alias/relation references before inserting reactions, aliases, and relations in a single transaction.

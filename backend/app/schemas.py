@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 Role = Literal["reactant", "product", "reagent", "catalyst", "solvent", "condition", "other"]
@@ -168,3 +168,61 @@ class ReorderRequest(BaseModel):
 class ImportResult(BaseModel):
     created: int
     updated: int
+
+
+class DrugImportItem(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    slug: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    chapters: list[str] = Field(default_factory=list)
+    functions: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
+    image_directory: str | None = Field(default=None, max_length=500)
+    reaction_codes: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("reaction_codes", "reactions"),
+    )
+
+    @field_validator("chapters", "functions", "aliases", "reaction_codes")
+    @classmethod
+    def clean_string_lists(cls, values: list[str]):
+        return list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
+
+
+class DrugImageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    source_path: str
+    display_order: int
+    asset: MediaAssetRead
+
+
+class DrugReactionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    display_order: int
+    reaction: ReactionRead
+
+
+class DrugRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    chapters: list[str]
+    functions: list[str]
+    aliases: list[str]
+    image_directory: str
+    created_at: datetime
+    updated_at: datetime
+    image_links: list[DrugImageRead]
+    reaction_links: list[DrugReactionRead]
+
+
+class DrugImportResult(BaseModel):
+    created: int
+    updated: int
+    images_uploaded: int
+    reactions_linked: int
+    warnings: list[str]
