@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Reaction, ReactionInput, RichTextValue, Role } from './types'
+import type { Reaction, ReactionInput, ReactionRichTextInput, RichTextValue, Role } from './types'
 import { FormattedText } from './inlineMarkup'
 import { RichEditor } from './CollectionDocumentEditor'
 
@@ -17,7 +17,7 @@ function inputFromReaction(reaction: Reaction): ReactionInput {
   }
 }
 
-export function ReactionDetail({ reaction, onEdit, onDelete, onSave }: { reaction: Reaction; onEdit: () => void; onDelete: () => void; onSave: (data: ReactionInput) => Promise<void> }) {
+export function ReactionDetail({ reaction, onEdit, onDelete, onSave }: { reaction: Reaction; onEdit: () => void; onDelete: () => void; onSave: (data: ReactionRichTextInput) => Promise<void> }) {
   const relations = [...reaction.outgoing_relations.map((item) => ({ ...item, direction: 'outgoing' as const })), ...reaction.incoming_relations.map((item) => ({ ...item, direction: 'incoming' as const }))]
   const [draft, setDraft] = useState(() => inputFromReaction(reaction))
   const [saving, setSaving] = useState(false)
@@ -35,7 +35,8 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave }: { reactio
   const save = async () => {
     if (!draft.name.trim()) { setError('Reaction name is required'); return }
     setSaving(true); setError('')
-    try { await onSave(draft) } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save reaction') }
+    try { await onSave({ name: draft.name, reaction_class: draft.reaction_class, summary: draft.summary, notes: draft.notes, rich_text: draft.rich_text ?? {} }) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save reaction') }
     finally { setSaving(false) }
   }
   useEffect(() => {

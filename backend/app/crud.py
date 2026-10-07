@@ -139,6 +139,19 @@ def update_reaction(db: Session, reaction_id: int, data: schemas.ReactionCreate)
     return get_reaction(db, reaction.id)
 
 
+def update_reaction_rich_text(
+    db: Session, reaction_id: int, data: schemas.ReactionRichTextUpdate
+) -> models.Reaction:
+    reaction = get_reaction(db, reaction_id)
+    reaction.name = data.name
+    reaction.reaction_class = data.reaction_class
+    reaction.summary = data.summary
+    reaction.notes = data.notes
+    save_reaction_rich_text(reaction, data.rich_text)
+    db.commit()
+    return get_reaction(db, reaction.id)
+
+
 def save_reaction_image(db: Session, reaction: models.Reaction, media_asset_id: str | None):
     if not media_asset_id:
         reaction.image_link = None

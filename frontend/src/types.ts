@@ -97,6 +97,14 @@ export interface ReactionInput {
   rich_text?: Record<string, string>
 }
 
+export interface ReactionRichTextInput {
+  name: string
+  reaction_class: string | null
+  summary: string | null
+  notes: string | null
+  rich_text: Record<string, string>
+}
+
 export interface RichTextValue { text: string; html?: string }
 export type CollectionBlock =
   | { id: string; type: 'heading'; level: 1 | 2 | 3; content: RichTextValue }

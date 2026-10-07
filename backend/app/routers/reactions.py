@@ -30,6 +30,13 @@ def update_reaction(reaction_id: int, data: schemas.ReactionCreate, db: Session 
     return crud.update_reaction(db, reaction_id, data)
 
 
+@router.patch("/{reaction_id}/rich-text", response_model=schemas.ReactionRead)
+def update_reaction_rich_text(
+    reaction_id: int, data: schemas.ReactionRichTextUpdate, db: Session = Depends(get_db)
+):
+    return crud.update_reaction_rich_text(db, reaction_id, data)
+
+
 @router.delete("/{reaction_id}", status_code=204)
 def delete_reaction(reaction_id: int, db: Session = Depends(get_db)):
     reaction = crud.get_reaction(db, reaction_id)

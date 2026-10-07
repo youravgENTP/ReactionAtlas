@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { ReactionDetail } from './ReactionDetail'
 import { ReactionForm } from './ReactionForm'
-import type { Reaction, ReactionInput, Role } from './types'
+import type { Reaction, ReactionInput, ReactionRichTextInput, Role } from './types'
 import { useLatex } from './latex'
 import { FormattedText, RichFormattedText } from './inlineMarkup'
 
@@ -43,9 +43,9 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
     const saved = editing === 'new' ? await api.createReaction(data) : await api.updateReaction((editing as Reaction).id, data)
     setEditing(null); await load(''); setSearch(''); setSelected(saved)
   }
-  const saveDirect = async (data: ReactionInput) => {
+  const saveDirect = async (data: ReactionRichTextInput) => {
     if (!selected) return
-    const saved = await api.updateReaction(selected.id, data)
+    const saved = await api.updateReactionRichText(selected.id, data)
     setSelected(saved)
     setReactions((current) => current.map((item) => item.id === saved.id ? saved : item))
   }

@@ -112,6 +112,14 @@ class ReactionImageUpdate(BaseModel):
     media_asset_id: str | None = None
 
 
+class ReactionRichTextUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    reaction_class: str | None = None
+    summary: str | None = None
+    notes: str | None = None
+    rich_text: dict[str, str] = Field(default_factory=dict)
+
+
 class LatexShortcut(BaseModel):
     id: str = Field(min_length=1, max_length=100)
     command: str = Field(min_length=1, max_length=80)

@@ -1,4 +1,4 @@
-import type { Collection, Component, LatexShortcut, MediaAsset, Reaction, ReactionInput } from './types'
+import type { Collection, Component, LatexShortcut, MediaAsset, Reaction, ReactionInput, ReactionRichTextInput } from './types'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -18,6 +18,7 @@ export const api = {
   components: (search = '') => request<Component[]>(`/api/components?search=${encodeURIComponent(search)}`),
   createReaction: (data: ReactionInput) => request<Reaction>('/api/reactions', { method: 'POST', body: JSON.stringify(data) }),
   updateReaction: (id: number, data: ReactionInput) => request<Reaction>(`/api/reactions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  updateReactionRichText: (id: number, data: ReactionRichTextInput) => request<Reaction>(`/api/reactions/${id}/rich-text`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteReaction: (id: number) => request<void>(`/api/reactions/${id}`, { method: 'DELETE' }),
   collections: () => request<Collection[]>('/api/collections'),
   createCollection: (data: { title: string; description: string | null; markdown_content: string }) =>

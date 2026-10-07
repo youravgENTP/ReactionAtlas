@@ -118,6 +118,7 @@ Separate multiple values within a component column with a semicolon (`;`). V1 CS
 ## API overview
 
 - `GET/POST /api/reactions`, `GET/PUT/DELETE /api/reactions/{id}`
+- `PATCH /api/reactions/{id}/rich-text` updates only inline document fields and never overwrites metadata or components
 - `GET/POST /api/components`
 - `GET/POST /api/collections`, `GET/PUT/DELETE /api/collections/{id}`
 - `POST/DELETE /api/collections/{id}/reactions...` and `PUT /api/collections/{id}/reorder`
