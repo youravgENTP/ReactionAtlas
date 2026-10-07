@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { api } from './api'
 import { useLatex } from './latex'
 import type { CollectionBlock, CollectionDocument, Reaction, RichTextValue } from './types'
-import { RichFormattedText, tokenizeInlineMarkup } from './inlineMarkup'
-import { sanitizeRichHtml } from './richText'
+import { RichFormattedText } from './inlineMarkup'
+import { tokenizeInlineMarkup } from './scriptMarkup'
+import { formatScriptHtml, sanitizeRichHtml } from './richText'
 
 const id = () => crypto.randomUUID()
 
@@ -58,20 +59,28 @@ export function CollectionDocumentEditor({ document, reactions, onChange, onOpen
 export function RichEditor({ value, heading, singleLine = false, placeholder, onChange }: { value: RichTextValue; heading?: 1 | 2 | 3; singleLine?: boolean; placeholder?: string; onChange: (value: RichTextValue) => void }) {
   const editor = useRef<HTMLDivElement>(null)
   const composing = useRef(false)
+  const finishingComposition = useRef(false)
+  const lastEmittedHtml = useRef<string | undefined>(undefined)
   const { shortcuts } = useLatex()
   useEffect(() => {
-    if (editor.current && editor.current.innerHTML !== (value.html ?? escapeHtml(value.text).replace(/\n/g, '<br>'))) editor.current.innerHTML = value.html ?? escapeHtml(value.text).replace(/\n/g, '<br>')
+    const desired = formatScriptHtml(value.html ?? escapeHtml(value.text).replace(/\n/g, '<br>'))
+    if (!editor.current || lastEmittedHtml.current === desired) return
+    if (editor.current.innerHTML !== desired) editor.current.innerHTML = desired
   }, [value.html, value.text])
   const emit = (includeEnd = false) => {
     if (!editor.current) return
     normalizeTextNodes(editor.current, shortcuts, includeEnd)
     normalizeScriptNodes(editor.current, includeEnd)
-    onChange({ text: editor.current.innerText, html: sanitizeRichHtml(editor.current.innerHTML) })
+    const html = sanitizeRichHtml(editor.current.innerHTML)
+    const innerText = editor.current.innerText
+    const text = innerText.trim() || !editor.current.textContent?.trim() ? innerText : editor.current.textContent
+    lastEmittedHtml.current = html
+    onChange({ text, html })
   }
   const command = (name: string, value?: string) => { document.execCommand(name, false, value); emit() }
   return <div className={`rich-editor ${heading ? `heading-${heading}` : ''} ${singleLine ? 'single-line' : ''}`}>
     <div className="rich-toolbar"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('bold')}><b>B</b></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('italic')}><i>I</i></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('underline')}><u>U</u></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')}>Highlight</button><span title="Text color"><input aria-label="Text color" type="color" onChange={(e) => command('foreColor', e.target.value)} /></span></div>
-    <div ref={editor} contentEditable suppressContentEditableWarning data-placeholder={placeholder ?? (heading ? `Heading ${heading}` : 'Write something…')} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false; emit() }} onInput={() => { if (!composing.current) emit() }} onBlur={() => emit(true)} onKeyDown={(event) => { if (singleLine && event.key === 'Enter') { event.preventDefault(); emit(true) } }} />
+    <div ref={editor} contentEditable suppressContentEditableWarning data-placeholder={placeholder ?? (heading ? `Heading ${heading}` : 'Write something…')} onCompositionStart={() => { composing.current = true; finishingComposition.current = false }} onCompositionEnd={() => { composing.current = false; finishingComposition.current = true; requestAnimationFrame(() => { finishingComposition.current = false; emit() }) }} onInput={() => { if (!composing.current && !finishingComposition.current) emit() }} onBlur={() => { finishingComposition.current = false; emit(true) }} onKeyDown={(event) => { if (singleLine && event.key === 'Enter') { event.preventDefault(); emit(true) } }} />
   </div>
 }
 
@@ -149,7 +158,19 @@ function richCaretOffset(root: HTMLElement) {
 
 function placeRichCaret(root: HTMLElement, offset: number) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let remaining = offset
-  while (walker.nextNode()) { const node = walker.currentNode as Text; if (remaining <= node.length) { const range = document.createRange(); range.setStart(node, remaining); range.collapse(true); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range); return } remaining -= node.length }
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text
+    if (remaining <= node.length) {
+      const range = document.createRange()
+      const script = node.parentElement?.closest('sub, sup')
+      if (remaining === node.length && script && root.contains(script)) range.setStartAfter(script)
+      else range.setStart(node, remaining)
+      range.collapse(true)
+      const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
+      return
+    }
+    remaining -= node.length
+  }
 }
 
 function escapeHtml(value: string) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }

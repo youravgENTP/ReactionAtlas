@@ -77,9 +77,9 @@ Select **New reaction**, choose the general or special series, enter its positiv
 
 Text inputs support shared LaTeX-style shortcuts. For example, type `\rightarrow` followed by a space to insert `→`. Both backslash and the Korean won-key character are recognized. Add, edit, or remove shortcuts from **Settings → LaTeX shortcuts**.
 
-Subscript and superscript markup works with arbitrary text, including Korean. Use `\_{text}` or `\_x` for subscript and `^{text}` or `^x` for superscript. Rich collection blocks convert the markup directly while editing; reaction form values retain the portable markup and render it typographically in cards and detail views.
+Subscript and superscript markup works with arbitrary text, including Korean. Use `_{text}` or `_x` for subscript and `^{text}` or `^x` for superscript; `\_` and `₩_` prefixes remain accepted for compatibility. Rich collection blocks convert the markup directly while editing; reaction form values retain the portable markup and render it typographically in cards and detail views.
 
-The reaction editor uses the same rich-text controls as collection documents for reaction name, class, summary, and notes. Searchable plain text remains in the reaction record while sanitized formatting is stored separately, so bold, italic, underline, highlight, color, subscript, and superscript do not replace the searchable content.
+The Reaction Library detail pane is directly editable: select a reaction and edit its name, class, summary, or notes in place with the same rich-text controls as collection documents. A save bar appears when the document has changes. The popup remains available as **Edit metadata** for series, number, status, slug, components, and card images. Searchable plain text remains in the reaction record while sanitized formatting is stored separately, so formatting does not replace searchable content.
 
 The search box matches, case-insensitively:
 

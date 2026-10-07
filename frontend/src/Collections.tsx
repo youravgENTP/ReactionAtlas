@@ -27,6 +27,15 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
     if (!active) return
     try { const item = await api.updateCollection(active.id, { title: active.title, description: active.description, markdown_content: serializeCollectionDocument(document) }); setActive(item); await reload() } catch (e) { setError(e instanceof Error ? e.message : 'Could not save collection') }
   }
+  useEffect(() => {
+    const handleSaveShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's' || !active) return
+      event.preventDefault()
+      void save()
+    }
+    window.addEventListener('keydown', handleSaveShortcut)
+    return () => window.removeEventListener('keydown', handleSaveShortcut)
+  })
   const rename = async () => {
     if (!active) return; const title = transform(window.prompt('Collection title', active.title)?.trim() ?? '', true); if (!title) return
     const item = await api.updateCollection(active.id, { title, description: active.description, markdown_content: serializeCollectionDocument(document) }); setActive(item); await reload()
@@ -50,7 +59,7 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
     </div></div>
 
   return <div className="workspace">
-    <div className="workspace-header"><button className="back" onClick={() => setActive(null)}>← Collections</button><div><span className="eyebrow">Study workspace</span><h1><FormattedText>{active.title}</FormattedText></h1></div><div className="button-row"><button className="secondary" onClick={() => void rename()}>Rename</button><button className="danger ghost" onClick={() => void removeCollection()}>Delete</button><button onClick={() => void save()}>Save</button></div></div>
+    <div className="workspace-header"><button className="back" onClick={() => setActive(null)}>← Collections</button><div><span className="eyebrow">Study workspace</span><h1><FormattedText>{active.title}</FormattedText></h1></div><div className="button-row"><button className="secondary" onClick={() => void rename()}>Rename</button><button className="danger ghost" onClick={() => void removeCollection()}>Delete</button><button title="Save (⌘S)" onClick={() => void save()}>Save</button></div></div>
     {error && <div className="error page-error">{error}</div>}
     <div className="workspace-columns">
       <aside className="reaction-cards"><div className="panel-label">REACTION CARDS · {active.reaction_links.length}</div>

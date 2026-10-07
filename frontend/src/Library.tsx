@@ -43,6 +43,12 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
     const saved = editing === 'new' ? await api.createReaction(data) : await api.updateReaction((editing as Reaction).id, data)
     setEditing(null); await load(''); setSearch(''); setSelected(saved)
   }
+  const saveDirect = async (data: ReactionInput) => {
+    if (!selected) return
+    const saved = await api.updateReaction(selected.id, data)
+    setSelected(saved)
+    setReactions((current) => current.map((item) => item.id === saved.id ? saved : item))
+  }
   const remove = async () => {
     if (!selected || !window.confirm(`Delete ${selected.display_code} — ${selected.name}?`)) return
     await api.deleteReaction(selected.id); setSelected(null); await load()
@@ -86,7 +92,7 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
           {search && <span className="component-hint">{reaction.aliases.filter((a) => a.alias.toLowerCase().includes(search.toLowerCase())).map((a) => `${a.alias} (${a.alias_type.replace('_', ' ')})`).concat(reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name)).join(' · ')}</span>}
         </button>)}</div>
       </aside>
-      <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} onEdit={() => setEditing(selected)} onDelete={() => void remove()} /> : <div className="empty-state"><span>RA</span><h2>No reaction selected</h2><p>Search your atlas or create a reaction record.</p></div>}</main>
+      <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} onEdit={() => setEditing(selected)} onDelete={() => void remove()} onSave={saveDirect} /> : <div className="empty-state"><span>RA</span><h2>No reaction selected</h2><p>Search your atlas or create a reaction record.</p></div>}</main>
     </div>
     {editing && <ReactionForm reaction={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} onSave={save} />}
   </div>
