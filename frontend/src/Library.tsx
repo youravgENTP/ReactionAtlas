@@ -3,6 +3,7 @@ import { api } from './api'
 import { ReactionDetail } from './ReactionDetail'
 import { ReactionForm } from './ReactionForm'
 import type { Reaction, ReactionInput, Role } from './types'
+import { useLatex } from './latex'
 
 function parseCsv(text: string): ReactionInput[] {
   const lines = text.trim().split(/\r?\n/)
@@ -27,6 +28,7 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
   const [editing, setEditing] = useState<Reaction | 'new' | null>(null)
   const [error, setError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
+  const { transform } = useLatex()
 
   const load = async (term = search) => {
     try {
@@ -69,7 +71,7 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
 
   return <div className="library-page">
     <div className="toolbar">
-      <div className="search-wrap"><span>⌕</span><input autoFocus placeholder="Search index, reaction, reagent, product…" value={search} onChange={(e) => setSearch(e.target.value)} />{search && <button className="clear" onClick={() => setSearch('')}>×</button>}</div>
+      <div className="search-wrap"><span>⌕</span><input autoFocus placeholder="Search index, reaction, reagent, product…" value={search} onBlur={(e) => setSearch(transform(e.target.value, true))} onChange={(e) => setSearch(transform(e.target.value))} />{search && <button className="clear" onClick={() => setSearch('')}>×</button>}</div>
       <input ref={fileInput} type="file" hidden accept=".json,.csv,application/json,text/csv" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importFile(file); e.target.value = '' }} />
       <button className="secondary" onClick={() => fileInput.current?.click()}>Import</button>
       <a className="button secondary" href="/api/export" download="reaction-atlas-export.json">Export</a>
@@ -79,7 +81,7 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
     <div className="library-layout">
       <aside className="results-panel"><div className="panel-label">{reactions.length} {reactions.length === 1 ? 'reaction' : 'reactions'}</div>
         <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => setSelected(reaction)}>
-          <span className="index-line"><span className={`series-label ${reaction.series}`}>{reaction.series}</span><span className="rxn-index">{reaction.display_code}</span></span><strong>{reaction.name}</strong><small>{reaction.reaction_class || 'Unclassified'}</small>
+          {reaction.image && <img className="result-thumbnail" src={reaction.image.content_url} alt="" />}<span className="index-line"><span className={`series-label ${reaction.series}`}>{reaction.series}</span><span className="rxn-index">{reaction.display_code}</span></span><strong>{reaction.name}</strong><small>{reaction.reaction_class || 'Unclassified'}</small>
           {search && <span className="component-hint">{reaction.aliases.filter((a) => a.alias.toLowerCase().includes(search.toLowerCase())).map((a) => `${a.alias} (${a.alias_type.replace('_', ' ')})`).concat(reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name)).join(' · ')}</span>}
         </button>)}</div>
       </aside>

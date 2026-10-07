@@ -54,6 +54,24 @@ export interface Reaction {
   aliases: ReactionAlias[]
   outgoing_relations: ReactionRelation[]
   incoming_relations: ReactionRelation[]
+  image: MediaAsset | null
+}
+
+export interface MediaAsset {
+  id: string
+  original_filename: string
+  mime_type: string
+  size_bytes: number
+  width: number | null
+  height: number | null
+  created_at: string
+  content_url: string
+}
+
+export interface LatexShortcut {
+  id: string
+  command: string
+  replacement: string
 }
 
 export interface ComponentInput {
@@ -74,7 +92,18 @@ export interface ReactionInput {
   status: ReactionStatus
   notes: string | null
   components: ComponentInput[]
+  image_asset_id?: string | null
 }
+
+export interface RichTextValue { text: string; html?: string }
+export type CollectionBlock =
+  | { id: string; type: 'heading'; level: 1 | 2 | 3; content: RichTextValue }
+  | { id: string; type: 'text'; content: RichTextValue }
+  | { id: string; type: 'image'; media_asset_id: string; width_percent: number; align: 'left' | 'center' | 'right' }
+  | { id: string; type: 'reaction'; reaction_id: number | null }
+  | { id: string; type: 'divider' }
+
+export interface CollectionDocument { version: 1; blocks: CollectionBlock[] }
 
 export interface CollectionLink {
   id: number

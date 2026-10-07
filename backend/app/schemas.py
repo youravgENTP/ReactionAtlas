@@ -58,6 +58,19 @@ class ReactionBase(BaseModel):
 
 class ReactionCreate(ReactionBase):
     components: list[ReactionComponentInput] = Field(default_factory=list)
+    image_asset_id: str | None = None
+
+
+class MediaAssetRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    original_filename: str
+    mime_type: str
+    size_bytes: int
+    width: int | None
+    height: int | None
+    created_at: datetime
+    content_url: str
 
 
 class ReactionAliasRead(BaseModel):
@@ -90,6 +103,17 @@ class ReactionRead(ReactionBase):
     aliases: list[ReactionAliasRead]
     outgoing_relations: list[ReactionRelationRead]
     incoming_relations: list[ReactionRelationRead]
+    image: MediaAssetRead | None
+
+
+class ReactionImageUpdate(BaseModel):
+    media_asset_id: str | None = None
+
+
+class LatexShortcut(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    command: str = Field(min_length=1, max_length=80)
+    replacement: str = Field(min_length=1, max_length=80)
 
 
 class CollectionBase(BaseModel):

@@ -50,10 +50,17 @@ class Reaction(Base):
         back_populates="target_reaction",
         cascade="all, delete-orphan",
     )
+    image_link: Mapped["ReactionImage | None"] = relationship(
+        back_populates="reaction", cascade="all, delete-orphan", uselist=False
+    )
 
     @property
     def display_code(self) -> str:
         return f"Rxn{'*' if self.series == 'special' else ''}{self.number}"
+
+    @property
+    def image(self):
+        return self.image_link.asset if self.image_link else None
 
 
 class ReactionAlias(Base):
@@ -174,3 +181,42 @@ class CollectionReaction(Base):
 
     collection: Mapped[Collection] = relationship(back_populates="reaction_links")
     reaction: Mapped[Reaction] = relationship(back_populates="collection_links")
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    stored_filename: Mapped[str] = mapped_column(String(255), unique=True)
+    mime_type: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+    @property
+    def content_url(self) -> str:
+        return f"/api/media/{self.id}/content"
+
+
+class ReactionImage(Base):
+    __tablename__ = "reaction_images"
+
+    reaction_id: Mapped[int] = mapped_column(
+        ForeignKey("reactions.id", ondelete="CASCADE"), primary_key=True
+    )
+    media_asset_id: Mapped[str] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="CASCADE"), unique=True, index=True
+    )
+
+    reaction: Mapped[Reaction] = relationship(back_populates="image_link")
+    asset: Mapped[MediaAsset] = relationship()
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)

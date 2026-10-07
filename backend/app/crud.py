@@ -39,6 +39,7 @@ def reaction_query():
         selectinload(models.Reaction.outgoing_relations).selectinload(models.ReactionRelation.target_reaction),
         selectinload(models.Reaction.incoming_relations).selectinload(models.ReactionRelation.source_reaction),
         selectinload(models.Reaction.incoming_relations).selectinload(models.ReactionRelation.target_reaction),
+        selectinload(models.Reaction.image_link).selectinload(models.ReactionImage.asset),
     )
 
 
@@ -105,11 +106,12 @@ def create_reaction(db: Session, data: schemas.ReactionCreate) -> models.Reactio
         models.Reaction.series == data.series, models.Reaction.number == data.number
     )):
         raise HTTPException(409, f"Reaction {data.series} {data.number} already exists")
-    fields = data.model_dump(exclude={"components"})
+    fields = data.model_dump(exclude={"components", "image_asset_id"})
     reaction = models.Reaction(**fields)
     db.add(reaction)
     db.flush()
     save_components(db, reaction, data.components)
+    save_reaction_image(db, reaction, data.image_asset_id)
     db.commit()
     return get_reaction(db, reaction.id)
 
@@ -125,11 +127,32 @@ def update_reaction(db: Session, reaction_id: int, data: schemas.ReactionCreate)
     )
     if duplicate:
         raise HTTPException(409, f"Reaction {data.series} {data.number} already exists")
-    for key, value in data.model_dump(exclude={"components"}).items():
+    for key, value in data.model_dump(exclude={"components", "image_asset_id"}).items():
         setattr(reaction, key, value)
     save_components(db, reaction, data.components)
+    save_reaction_image(db, reaction, data.image_asset_id)
     db.commit()
     return get_reaction(db, reaction.id)
+
+
+def save_reaction_image(db: Session, reaction: models.Reaction, media_asset_id: str | None):
+    if not media_asset_id:
+        reaction.image_link = None
+        return
+    asset = db.get(models.MediaAsset, media_asset_id)
+    if not asset:
+        raise HTTPException(400, "Image asset does not exist")
+    used = db.scalar(select(models.ReactionImage).where(
+        models.ReactionImage.media_asset_id == media_asset_id,
+        models.ReactionImage.reaction_id != reaction.id,
+    ))
+    if used:
+        raise HTTPException(409, "Image asset is already assigned to another reaction")
+    if reaction.image_link:
+        reaction.image_link.media_asset_id = media_asset_id
+        reaction.image_link.asset = asset
+    else:
+        reaction.image_link = models.ReactionImage(asset=asset)
 
 
 def collection_query():
@@ -149,6 +172,10 @@ def collection_query():
         .selectinload(models.CollectionReaction.reaction)
         .selectinload(models.Reaction.outgoing_relations)
         .selectinload(models.ReactionRelation.target_reaction),
+        selectinload(models.Collection.reaction_links)
+        .selectinload(models.CollectionReaction.reaction)
+        .selectinload(models.Reaction.image_link)
+        .selectinload(models.ReactionImage.asset),
         selectinload(models.Collection.reaction_links)
         .selectinload(models.CollectionReaction.reaction)
         .selectinload(models.Reaction.incoming_relations)

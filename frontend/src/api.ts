@@ -1,4 +1,4 @@
-import type { Collection, Component, Reaction, ReactionInput } from './types'
+import type { Collection, Component, LatexShortcut, MediaAsset, Reaction, ReactionInput } from './types'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -33,4 +33,17 @@ export const api = {
     method: 'PUT', body: JSON.stringify({ reaction_ids: reactionIds }),
   }),
   importReactions: (data: ReactionInput[]) => request<{ created: number; updated: number }>('/api/import', { method: 'POST', body: JSON.stringify(data) }),
+  latexShortcuts: () => request<LatexShortcut[]>('/api/settings/latex-shortcuts'),
+  saveLatexShortcuts: (data: LatexShortcut[]) => request<LatexShortcut[]>('/api/settings/latex-shortcuts', { method: 'PUT', body: JSON.stringify(data) }),
+  uploadImage: async (file: File) => {
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const image = new Image(); const url = URL.createObjectURL(file)
+      image.onload = () => { URL.revokeObjectURL(url); resolve({ width: image.naturalWidth, height: image.naturalHeight }) }
+      image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image')) }; image.src = url
+    })
+    return request<MediaAsset>('/api/media', { method: 'POST', body: file, headers: {
+      'Content-Type': file.type, 'X-Filename': encodeURIComponent(file.name),
+      'X-Image-Width': String(dimensions.width), 'X-Image-Height': String(dimensions.height),
+    } })
+  },
 }

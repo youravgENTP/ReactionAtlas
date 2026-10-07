@@ -8,6 +8,7 @@ export function ReactionDetail({ reaction, onEdit, onDelete }: { reaction: React
   return <article className="detail-card">
     <div className="detail-header"><div><div className="index-line"><span className={`series-label ${reaction.series}`}>{reaction.series}</span><span className="rxn-index large">{reaction.display_code}</span></div><h1>{reaction.name}</h1></div><div className="button-row"><button className="secondary" onClick={onEdit}>Edit</button><button className="danger ghost" onClick={onDelete}>Delete</button></div></div>
     {reaction.reaction_class && <div className="category">{reaction.reaction_class}</div>}
+    {reaction.image && <img className="reaction-hero" src={reaction.image.content_url} alt={`${reaction.name} reaction`} />}
     {reaction.summary && <p className="description">{reaction.summary}</p>}
     <div className="role-grid">{groups.map(([role, title]) => {
       const entries = reaction.components.filter((item) => item.role === role)

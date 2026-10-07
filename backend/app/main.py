@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
 from .database import Base, engine, get_db
-from .routers import collections, components, reactions
+from .routers import collections, components, media, reactions, settings
 from .seed import seed_database
 
 
@@ -30,6 +30,8 @@ app.add_middleware(
 app.include_router(reactions.router)
 app.include_router(components.router)
 app.include_router(collections.router)
+app.include_router(media.router)
+app.include_router(settings.router)
 
 
 @app.get("/api/health")
