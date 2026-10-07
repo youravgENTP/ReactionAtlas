@@ -88,6 +88,7 @@ export function ReactionForm({ reaction, onSave, onClose }: Props) {
       <div className="form-grid">
         <label className="wide">Notes<textarea rows={3} value={form.notes ?? ''} onBlur={(e) => textChange('notes', e.target.value, true)} onChange={(e) => textChange('notes', e.target.value)} /></label>
       </div>
+      <p className="input-syntax-help">Formatting: <code>\_&#123;text&#125;</code> or <code>\_x</code> for subscript · <code>^&#123;text&#125;</code> or <code>^x</code> for superscript</p>
       <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button disabled={busy}>{busy ? 'Saving…' : 'Save reaction'}</button></div>
     </form>
   </div>

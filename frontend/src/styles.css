@@ -94,6 +94,7 @@ textarea { resize: vertical; line-height: 1.45; }
 .reaction-image-input > div { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .reaction-image-input small { width: 100%; color: #7b827e; font-weight: 400; }
 .image-picker { display: inline-block; text-transform: none; color: #29312d; cursor: pointer; }
+.input-syntax-help { margin: 10px 0 0; color: #777f7a; font-size: 11px; }.input-syntax-help code { padding: 1px 4px; border-radius: 3px; background: #eef1ef; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
 .error { border: 1px solid #e2aaa6; background: #fff0ef; color: #8c302c; border-radius: 5px; padding: 9px 12px; margin-bottom: 14px; font-size: 13px; }
 .page-error { margin: 10px 24px 0; }
@@ -169,5 +170,7 @@ textarea { resize: vertical; line-height: 1.45; }
 .settings-header h1 { font: 500 32px Georgia, serif; margin: 5px 0; }.settings-header p { color: #69716c; margin: 0; }
 .settings-card { max-width: 900px; margin: auto; padding: 25px; background: white; border: 1px solid #d9ddda; border-radius: 7px; }
 .settings-card h2 { font: 500 21px Georgia, serif; }.settings-card > p { color: #6e7671; font-size: 13px; }.settings-card code { background: #edf0ed; padding: 2px 4px; }
+.script-help { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 16px; padding: 12px 14px; border-radius: 5px; background: #f3f6f4; color: #59635d; font-size: 12px; }.script-help strong { width: 100%; color: #33443a; }.script-help span { display: flex; align-items: baseline; gap: 5px; }
+.detail-card sub, .detail-card sup, .collection-card sub, .collection-card sup, .mini-card sub, .mini-card sup, .embedded-card sub, .embedded-card sup { font-size: .72em; line-height: 0; }
 .shortcut-table { display: grid; margin: 20px 0 12px; }.shortcut-head, .shortcut-row { display: grid; grid-template-columns: 1fr 1fr 38px; gap: 8px; align-items: center; }.shortcut-head { padding: 0 8px 7px; color: #777f7a; font-size: 10px; font-weight: 750; text-transform: uppercase; }.shortcut-row { padding: 6px 8px; border-top: 1px solid #edf0ed; }.shortcut-row label { display: grid; grid-template-columns: 16px 1fr; align-items: center; text-transform: none; }.shortcut-row input { width: 100%; }.add-shortcut { margin-left: 8px; }.success { max-width: 900px; margin: 0 auto 14px; border: 1px solid #a9cdb8; background: #eff8f2; color: #286142; padding: 9px 12px; border-radius: 5px; }
 @media (max-width: 1050px) { .collection-grid { grid-template-columns: repeat(2, 1fr); } .detail-panel { padding-left: 35px; padding-right: 35px; } }

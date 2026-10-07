@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { api } from './api'
 import { useLatex } from './latex'
 import type { CollectionBlock, CollectionDocument, Reaction, RichTextValue } from './types'
+import { FormattedText, tokenizeInlineMarkup } from './inlineMarkup'
 
 const id = () => crypto.randomUUID()
 
@@ -63,6 +64,7 @@ function RichEditor({ value, heading, onChange }: { value: RichTextValue; headin
   const emit = (includeEnd = false) => {
     if (!editor.current) return
     normalizeTextNodes(editor.current, shortcuts, includeEnd)
+    normalizeScriptNodes(editor.current, includeEnd)
     onChange({ text: editor.current.innerText, html: sanitizeRichHtml(editor.current.innerHTML) })
   }
   const command = (name: string, value?: string) => { document.execCommand(name, false, value); emit() }
@@ -90,7 +92,7 @@ function CollectionImage({ block, onChange }: { block: Extract<CollectionBlock, 
 
 function ReactionEmbed({ block, reactions, onChange, onOpenReaction }: { block: Extract<CollectionBlock, { type: 'reaction' }>; reactions: Reaction[]; onChange: (block: Extract<CollectionBlock, { type: 'reaction' }>) => void; onOpenReaction: (code: string) => void }) {
   const reaction = reactions.find((item) => item.id === block.reaction_id)
-  return <div className="reaction-embed"><select value={block.reaction_id ?? ''} onChange={(e) => onChange({ ...block, reaction_id: Number(e.target.value) || null })}><option value="">Choose a reaction</option>{reactions.map((item) => <option value={item.id} key={item.id}>{item.display_code} — {item.name}</option>)}</select>{reaction && <button className="embedded-card" onClick={() => onOpenReaction(reaction.display_code)}>{reaction.image && <img src={reaction.image.content_url} alt="" />}<span><small>{reaction.display_code}</small><strong>{reaction.name}</strong><em>{reaction.reaction_class || 'Unclassified'}</em></span></button>}</div>
+  return <div className="reaction-embed"><select value={block.reaction_id ?? ''} onChange={(e) => onChange({ ...block, reaction_id: Number(e.target.value) || null })}><option value="">Choose a reaction</option>{reactions.map((item) => <option value={item.id} key={item.id}>{item.display_code} — {item.name}</option>)}</select>{reaction && <button className="embedded-card" onClick={() => onOpenReaction(reaction.display_code)}>{reaction.image && <img src={reaction.image.content_url} alt="" />}<span><small>{reaction.display_code}</small><strong><FormattedText>{reaction.name}</FormattedText></strong><em><FormattedText>{reaction.reaction_class || 'Unclassified'}</FormattedText></em></span></button>}</div>
 }
 
 function normalizeTextNodes(root: HTMLElement, shortcuts: import('./types').LatexShortcut[], includeEnd: boolean) {
@@ -111,6 +113,33 @@ function normalizeTextNodes(root: HTMLElement, shortcuts: import('./types').Late
   if (active && delta) placeRichCaret(root, Math.max(0, offset + delta))
 }
 
+function normalizeScriptNodes(root: HTMLElement, includeEnd: boolean) {
+  const selection = window.getSelection()
+  const active = Boolean(selection?.rangeCount && selection.isCollapsed && root.contains(selection.anchorNode))
+  const caret = active ? richCaretOffset(root) : 0
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  while (walker.nextNode()) if (!(walker.currentNode.parentElement?.closest('sub, sup'))) nodes.push(walker.currentNode as Text)
+  let sourceOffset = 0
+  let removedBeforeCaret = 0
+  for (const node of nodes) {
+    const source = node.data
+    const tokens = tokenizeInlineMarkup(source, includeEnd)
+    if (tokens.some((token) => token.type !== 'text')) {
+      const fragment = document.createDocumentFragment()
+      for (const token of tokens) {
+        const replacementLength = token.text.length
+        if (active && sourceOffset + token.end <= caret) removedBeforeCaret += (token.end - token.start) - replacementLength
+        if (token.type === 'text') fragment.append(token.text)
+        else { const element = document.createElement(token.type); element.textContent = token.text; fragment.append(element) }
+      }
+      node.replaceWith(fragment)
+    }
+    sourceOffset += source.length
+  }
+  if (active && removedBeforeCaret) placeRichCaret(root, Math.max(0, caret - removedBeforeCaret))
+}
+
 function richCaretOffset(root: HTMLElement) {
   const selection = window.getSelection(); if (!selection?.rangeCount) return 0
   const range = selection.getRangeAt(0).cloneRange(); range.selectNodeContents(root); range.setEnd(selection.anchorNode!, selection.anchorOffset)
@@ -125,7 +154,7 @@ function placeRichCaret(root: HTMLElement, offset: number) {
 function sanitizeRichHtml(html: string) {
   const document = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
   const root = document.body.firstElementChild!
-  const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'BR', 'DIV', 'SPAN'])
+  const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'SUB', 'SUP', 'BR', 'DIV', 'SPAN'])
   for (const element of [...root.querySelectorAll('*')]) {
     if (!allowed.has(element.tagName)) { element.replaceWith(...element.childNodes); continue }
     for (const attribute of [...element.attributes]) if (attribute.name !== 'style') element.removeAttribute(attribute.name)

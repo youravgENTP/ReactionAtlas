@@ -77,6 +77,8 @@ Select **New reaction**, choose the general or special series, enter its positiv
 
 Text inputs support shared LaTeX-style shortcuts. For example, type `\rightarrow` followed by a space to insert `→`. Both backslash and the Korean won-key character are recognized. Add, edit, or remove shortcuts from **Settings → LaTeX shortcuts**.
 
+Subscript and superscript markup works with arbitrary text, including Korean. Use `\_{text}` or `\_x` for subscript and `^{text}` or `^x` for superscript. Rich collection blocks convert the markup directly while editing; reaction form values retain the portable markup and render it typographically in cards and detail views.
+
 The search box matches, case-insensitively:
 
 - derived reaction code, name, slug, reaction class, summary, notes, and reaction aliases

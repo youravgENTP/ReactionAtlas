@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import { CollectionDocumentEditor, parseCollectionDocument, serializeCollectionDocument } from './CollectionDocumentEditor'
 import { useLatex } from './latex'
+import { FormattedText } from './inlineMarkup'
 import type { Collection, CollectionDocument, Reaction } from './types'
 
 export function Collections({ onOpenReaction }: { onOpenReaction: (index: string) => void }) {
@@ -44,18 +45,18 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
   }
   if (!active) return <div className="collections-index"><div className="index-header"><div><span className="eyebrow">Study sets</span><h1>Collections</h1><p>Group related reactions and build a focused study document.</p></div><button onClick={() => void create()}>+ New collection</button></div>
     {error && <div className="error">{error}</div>}
-    <div className="collection-grid">{collections.map((item) => <button className="collection-card" key={item.id} onClick={() => setCollection(item)}><span className="count">{item.reaction_links.length}</span><h2>{item.title}</h2><p>{item.description || 'No description'}</p><small>Updated {new Date(item.updated_at).toLocaleDateString()}</small></button>)}
+    <div className="collection-grid">{collections.map((item) => <button className="collection-card" key={item.id} onClick={() => setCollection(item)}><span className="count">{item.reaction_links.length}</span><h2><FormattedText>{item.title}</FormattedText></h2><p><FormattedText>{item.description || 'No description'}</FormattedText></p><small>Updated {new Date(item.updated_at).toLocaleDateString()}</small></button>)}
       {collections.length === 0 && <div className="empty-state"><span>＋</span><h2>No collections yet</h2><p>Create one to organize reactions for your next study session.</p></div>}
     </div></div>
 
   return <div className="workspace">
-    <div className="workspace-header"><button className="back" onClick={() => setActive(null)}>← Collections</button><div><span className="eyebrow">Study workspace</span><h1>{active.title}</h1></div><div className="button-row"><button className="secondary" onClick={() => void rename()}>Rename</button><button className="danger ghost" onClick={() => void removeCollection()}>Delete</button><button onClick={() => void save()}>Save</button></div></div>
+    <div className="workspace-header"><button className="back" onClick={() => setActive(null)}>← Collections</button><div><span className="eyebrow">Study workspace</span><h1><FormattedText>{active.title}</FormattedText></h1></div><div className="button-row"><button className="secondary" onClick={() => void rename()}>Rename</button><button className="danger ghost" onClick={() => void removeCollection()}>Delete</button><button onClick={() => void save()}>Save</button></div></div>
     {error && <div className="error page-error">{error}</div>}
     <div className="workspace-columns">
       <aside className="reaction-cards"><div className="panel-label">REACTION CARDS · {active.reaction_links.length}</div>
         {active.reaction_links.map((link, index) => <article className="mini-card" id={`card-${link.reaction.display_code}`} key={link.id}>
           {link.reaction.image && <img className="mini-card-image" src={link.reaction.image.content_url} alt="" />}
-          <button className="card-main" onClick={() => onOpenReaction(link.reaction.display_code)}><span className="index-line"><span className={`series-label ${link.reaction.series}`}>{link.reaction.series}</span><span className="rxn-index">{link.reaction.display_code}</span></span><strong>{link.reaction.name}</strong><small>{link.reaction.reaction_class}</small></button>
+          <button className="card-main" onClick={() => onOpenReaction(link.reaction.display_code)}><span className="index-line"><span className={`series-label ${link.reaction.series}`}>{link.reaction.series}</span><span className="rxn-index">{link.reaction.display_code}</span></span><strong><FormattedText>{link.reaction.name}</FormattedText></strong><small><FormattedText>{link.reaction.reaction_class}</FormattedText></small></button>
           <div className="card-controls"><button disabled={index === 0} onClick={() => void move(index, -1)}>↑</button><button disabled={index === active.reaction_links.length - 1} onClick={() => void move(index, 1)}>↓</button><button onClick={() => void remove(link.reaction.id)}>×</button></div>
         </article>)}
         <div className="add-reaction"><input placeholder="Add reaction by index or name…" value={addSearch} onBlur={(e) => setAddSearch(transform(e.target.value, true))} onChange={(e) => setAddSearch(transform(e.target.value))} />{addSearch && <div className="add-results">{available.map((reaction) => <button key={reaction.id} onClick={() => void add(reaction.id)}><span className="rxn-index">{reaction.display_code}</span>{reaction.name}</button>)}</div>}</div>
