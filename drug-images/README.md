@@ -12,13 +12,17 @@ Example format only (this file does not create a drug):
 [
   {
     "name": "Example drug",
+    "number": 3,
     "slug": "example-drug",
     "chapters": ["Chapter name"],
     "functions": ["Functional category"],
     "aliases": [],
     "description": "Optional notes",
     "image_directory": "drug-images/example-drug",
-    "reaction_codes": ["Rxn1", "Rxn*2"]
+    "reaction_codes": ["Rxn1", "Rxn*2"],
+    "structure_codes": ["Str1"]
   }
 ]
 ```
+
+`number` is optional for a new record and becomes the stable `Drug<number>` code. Re-imports match by slug and retain the existing number. `structure_codes` links records from the Structure Database.

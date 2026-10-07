@@ -11,12 +11,12 @@ button.ghost { background: transparent; border-color: transparent; }
 button.danger { color: #a13e39; }
 .button-row { display: flex; align-items: center; gap: 7px; }
 .app-shell { height: 100vh; display: flex; flex-direction: column; }
-.app-header { height: 58px; flex: none; display: flex; align-items: center; padding: 0 25px; gap: 40px; background: #fff; border-bottom: 1px solid #dfe2df; }
+.app-header { height: 58px; flex: none; display: flex; align-items: center; padding: 0 20px; gap: 24px; background: #fff; border-bottom: 1px solid #dfe2df; }
 .brand { display: flex; align-items: center; gap: 10px; border: 0; background: none; color: #202421; padding: 0; font-size: 16px; }
 .brand:hover { background: none; }
 .brand span { display: grid; place-items: center; width: 30px; height: 30px; background: #234b3a; color: white; border-radius: 5px; font-size: 11px; letter-spacing: .05em; }
 .app-header nav { align-self: stretch; display: flex; }
-.app-header nav button { position: relative; border: 0; border-radius: 0; background: none; color: #67706a; padding: 0 17px; font-weight: 500; }
+.app-header nav button { position: relative; border: 0; border-radius: 0; background: none; color: #67706a; padding: 0 13px; font-weight: 500; }
 .app-header nav button:hover { color: #222; }
 .app-header nav button.active { color: #234b3a; font-weight: 650; }
 .app-header nav button.active::after { content: ''; height: 2px; background: #2d6a50; position: absolute; left: 16px; right: 16px; bottom: 0; }
@@ -200,12 +200,14 @@ textarea { resize: vertical; line-height: 1.45; }
 .drug-result img { flex: none; width: 58px; height: 54px; object-fit: contain; border-radius: 4px; background: #f3f5f3; }
 .drug-result > span { min-width: 0; display: grid; gap: 3px; }.drug-result strong, .drug-result small, .drug-result em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drug-result small { color: #587063; font-size: 10px; }.drug-result em { color: #7c837e; font-size: 11px; font-style: normal; font-weight: 400; }
+.drug-result .record-code { color: #276047; font-weight: 750; letter-spacing: .07em; }
 .drug-detail { min-width: 0; overflow: auto; padding: 40px clamp(35px, 7vw, 100px) 80px; }
 .drug-record { max-width: 960px; margin: 0 auto; }.drug-record h1 { margin: 7px 0 5px; font: 500 36px Georgia, serif; }.drug-record h2 { margin-top: 30px; padding-bottom: 8px; border-bottom: 1px solid #dde1de; color: #303732; font: 500 20px Georgia, serif; }
 .drug-aliases { color: #737b76; font-size: 13px; }.drug-description { max-width: 760px; margin-top: 22px; color: #4e5751; line-height: 1.7; white-space: pre-wrap; }
 .drug-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }.drug-tags span { padding: 4px 9px; border-radius: 13px; background: #ecefea; color: #59625c; font-size: 11px; }.drug-tags span.chapter { background: #e0ede5; color: #2e664a; }
 .drug-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }.drug-gallery figure { margin: 0; border: 1px solid #dfe3df; border-radius: 6px; overflow: hidden; background: white; }.drug-gallery img { display: block; width: 100%; height: 190px; object-fit: contain; background: #f7f8f6; }.drug-gallery figcaption { padding: 7px 9px; color: #7a817c; font-size: 10px; overflow-wrap: anywhere; }
 .drug-reactions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.drug-reactions button { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; overflow: hidden; border-color: #cfdbd3; background: #f8faf8; color: #202421; text-align: left; }.drug-reactions button:hover { background: #eff5f1; }.drug-reactions img { flex: none; width: 88px; height: 76px; object-fit: contain; background: white; }.drug-reactions span { min-width: 0; flex: 1; display: grid; gap: 3px; padding: 12px 0; }.drug-reactions small { color: #327055; }.drug-reactions em { color: #7a817c; font-size: 11px; font-style: normal; }.drug-reactions button > b { flex: none; padding-right: 13px; color: #557060; font-size: 10px; }
+.entity-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }.entity-links button { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; overflow: hidden; border-color: #d7dcd8; background: white; color: #202421; text-align: left; }.entity-links button:hover { background: #f2f6f3; }.entity-links img { flex: none; width: 76px; height: 70px; object-fit: contain; background: #f7f8f6; }.entity-links span { min-width: 0; flex: 1; display: grid; gap: 3px; padding: 12px 0; }.entity-links small { color: #327055; }.entity-links em { color: #7a817c; font-size: 11px; font-style: normal; }.entity-links button > b { flex: none; padding-right: 13px; color: #557060; font-size: 10px; }
 .drug-record footer { margin-top: 34px; padding-top: 12px; border-top: 1px solid #e0e3e1; color: #7a817d; font-size: 11px; }.drug-record footer code, .drug-empty code { padding: 2px 4px; background: #ecefec; }
 .drug-empty { max-width: 680px; margin: 45px auto; color: #69726c; text-align: center; }.drug-empty > span { width: 56px; height: 56px; display: grid; place-items: center; margin: 0 auto 17px; border: 1px solid #b8c5bd; border-radius: 50%; color: #38664e; }.drug-empty h2 { color: #303833; font: 500 23px Georgia, serif; }.drug-empty p { line-height: 1.6; }.drug-empty pre { margin-top: 22px; padding: 16px 18px; overflow: auto; border: 1px solid #d9ddda; border-radius: 6px; background: white; color: #414944; font-size: 11px; line-height: 1.55; text-align: left; }
 .settings-page { flex: 1; overflow: auto; padding: 45px clamp(35px, 8vw, 120px); }

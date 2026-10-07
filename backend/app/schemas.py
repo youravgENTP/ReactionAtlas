@@ -172,6 +172,7 @@ class ImportResult(BaseModel):
 
 class DrugImportItem(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    number: int | None = Field(default=None, gt=0)
     slug: str | None = Field(default=None, max_length=255)
     description: str | None = None
     chapters: list[str] = Field(default_factory=list)
@@ -182,11 +183,16 @@ class DrugImportItem(BaseModel):
         default_factory=list,
         validation_alias=AliasChoices("reaction_codes", "reactions"),
     )
+    structure_codes: list[str] = Field(default_factory=list)
 
-    @field_validator("chapters", "functions", "aliases", "reaction_codes")
+    @field_validator("chapters", "functions", "aliases", "reaction_codes", "structure_codes")
     @classmethod
     def clean_string_lists(cls, values: list[str]):
         return list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
+
+
+class DrugImportPayload(BaseModel):
+    drugs: list[DrugImportItem]
 
 
 class DrugImageRead(BaseModel):
@@ -204,9 +210,41 @@ class DrugReactionRead(BaseModel):
     reaction: ReactionRead
 
 
+class StructureReferenceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    number: int
+    display_code: str
+    name: str
+    slug: str
+    categories: list[str]
+    image: MediaAssetRead | None
+
+
+class DrugReferenceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    number: int
+    display_code: str
+    name: str
+    slug: str
+    chapters: list[str]
+    functions: list[str]
+    image: MediaAssetRead | None
+
+
+class DrugStructureRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    display_order: int
+    structure: StructureReferenceRead
+
+
 class DrugRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    number: int
+    display_code: str
     name: str
     slug: str
     description: str | None
@@ -218,6 +256,7 @@ class DrugRead(BaseModel):
     updated_at: datetime
     image_links: list[DrugImageRead]
     reaction_links: list[DrugReactionRead]
+    structure_links: list[DrugStructureRead]
 
 
 class DrugImportResult(BaseModel):
@@ -225,4 +264,75 @@ class DrugImportResult(BaseModel):
     updated: int
     images_uploaded: int
     reactions_linked: int
+    structures_linked: int
+    warnings: list[str]
+
+
+class StructureImportItem(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    number: int | None = Field(default=None, gt=0)
+    slug: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    categories: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
+    image_directory: str | None = Field(default=None, max_length=500)
+    reaction_codes: list[str] = Field(default_factory=list)
+    drug_codes: list[str] = Field(default_factory=list)
+
+    @field_validator("categories", "aliases", "reaction_codes", "drug_codes")
+    @classmethod
+    def clean_structure_lists(cls, values: list[str]):
+        return list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
+
+
+class StructureImportPayload(BaseModel):
+    structures: list[StructureImportItem]
+
+
+class StructureImageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    source_path: str
+    display_order: int
+    asset: MediaAssetRead
+
+
+class StructureReactionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    display_order: int
+    reaction: ReactionRead
+
+
+class StructureDrugRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    display_order: int
+    drug: DrugReferenceRead
+
+
+class StructureRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    number: int
+    display_code: str
+    name: str
+    slug: str
+    description: str | None
+    categories: list[str]
+    aliases: list[str]
+    image_directory: str
+    created_at: datetime
+    updated_at: datetime
+    image_links: list[StructureImageRead]
+    reaction_links: list[StructureReactionRead]
+    drug_links: list[StructureDrugRead]
+
+
+class StructureImportResult(BaseModel):
+    created: int
+    updated: int
+    images_uploaded: int
+    reactions_linked: int
+    drugs_linked: int
     warnings: list[str]

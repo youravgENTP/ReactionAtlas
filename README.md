@@ -12,6 +12,7 @@ frontend/src/      React/TypeScript interface
 data/reactions.json  Canonical bootstrap/reference reaction dataset tracked by Git
 data/reaction_atlas.db  Local runtime SQLite database, ignored by Git
 drug-images/       Per-drug source image folders used by the bulk importer
+structure-images/  Per-structure source image folders used by the bulk importer
 docs/              Project documentation
 ```
 
@@ -61,7 +62,7 @@ cd backend
 
 The database path is resolved from the repository root and is always `data/reaction_atlas.db`, regardless of the directory from which Python is started.
 
-SQLAlchemy models define the database schema. On the first startup only, an empty database is seeded from the 18 verified reaction records in `data/reactions.json`. Existing data is never overwritten or synchronized automatically when the canonical JSON changes.
+SQLAlchemy models define the database schema. On startup, a small additive SQLite upgrade runs before `create_all()`: older Drug rows receive stable numbers in `created_at`/`id` order, and a unique number index is installed without replacing any tables or rows. On the first startup only, an empty reaction database is seeded from the 18 verified reaction records in `data/reactions.json`. Existing data is never overwritten or synchronized automatically when the canonical JSON changes.
 
 To discard the local database contents and recreate the verified seed data:
 
@@ -70,11 +71,11 @@ cd backend
 python -m app.reset_db
 ```
 
-This resets only the SQLite application tables in `data/reaction_atlas.db`, validates `data/reactions.json`, and loads it in one transaction. It does not touch configuration or uploaded assets. To add or correct a canonical bootstrap reaction, edit `data/reactions.json` rather than `backend/app/seed.py`, then run the reset command when you intentionally want to rebuild the runtime database.
+This resets the canonical reaction/component data and collections in `data/reaction_atlas.db`, validates `data/reactions.json`, and reloads it in one transaction. It does not delete Drug records, Structure records, configuration, or uploaded assets; links to deleted reaction rows are removed by foreign-key cascade and can be restored by re-importing the relevant Drug/Structure JSON. To add or correct a canonical bootstrap reaction, edit `data/reactions.json` rather than `backend/app/seed.py`, then run the reset command when you intentionally want to rebuild the runtime database.
 
 ## Using the reaction library
 
-Select **New reaction**, choose the general or special series, enter its positive integer number and name, and add as many components as needed. The display code is derived: general reaction 4 is `Rxn4`, while special reaction 4 is `Rxn*4`. Each component has a role (reactant, product, reagent, catalyst, solvent, condition, or other) and an optional detail/stoichiometry note. Typing the same component name with different casing or whitespace reuses the existing component record. An optional image can be uploaded for the reaction card; it appears in library results, the reaction detail, and collections.
+Select **New reaction**, choose the general or special series, enter its positive integer number and name, and add as many components as needed. The display code is derived: general reaction 4 is `Rxn4`, while special named reaction 4 is `Rxn*4`. `Rxn*` remains reserved for named reactions; scaffold-specific `SRxn` codes are not implemented. Each component has a role (reactant, product, reagent, catalyst, solvent, condition, or other) and an optional detail/stoichiometry note. Typing the same component name with different casing or whitespace reuses the existing component record. An optional image can be uploaded for the reaction card; it appears in library results, the reaction detail, and collections.
 
 Text inputs support shared LaTeX-style shortcuts. For example, type `\rightarrow` followed by a space to insert `→`. Both backslash and the Korean won-key character are recognized. Add, edit, or remove shortcuts from **Settings → LaTeX shortcuts**.
 
@@ -98,7 +99,7 @@ The right side is a block document editor. Add rich-text paragraphs, headings, i
 
 ## Drug database
 
-The **Drug Database** starts empty. It groups imported drugs by chapter and function and connects each drug's synthesis to existing Rxn Library records. Selecting a linked synthesis reaction opens that reaction in the Reaction Library.
+The **Drug Database** starts empty. Every Drug has a stable human-readable code such as `Drug3`; its internal SQLite primary key remains separate. Codes survive re-import and reordering, and automatically allocated codes are never reused after deletion. Drugs are grouped by chapter and function and connect to both Rxn Library synthesis reactions and Structure Database records.
 
 Bulk import accepts a JSON array, or an object containing a `drugs` array. Create one source-image directory per drug under `drug-images/`, then select **Import JSON**. The importer recursively discovers JPEG, PNG, GIF, and WebP files up to 8 MB, copies them into managed media storage, and links reaction codes only when they exist in the Rxn Library. Re-importing the same slug updates metadata, reaction links, and changed images without duplicating records.
 
@@ -106,18 +107,46 @@ Bulk import accepts a JSON array, or an object containing a `drugs` array. Creat
 [
   {
     "name": "Example drug",
+    "number": 3,
     "slug": "example-drug",
     "chapters": ["Chapter name"],
     "functions": ["Functional category"],
     "aliases": [],
     "description": "Optional notes",
     "image_directory": "drug-images/example-drug",
-    "reaction_codes": ["Rxn1", "Rxn*2"]
+    "reaction_codes": ["Rxn1", "Rxn*2"],
+    "structure_codes": ["Str1"]
   }
 ]
 ```
 
-When `image_directory` is omitted, it defaults to `drug-images/<slug>/`; a missing directory is created and reported as having no images. For safety, imports can only read image directories contained within the project's `drug-images/` directory. See `drug-images/README.md` for the same format near the source folders.
+`number` is optional for new records; omitting it allocates the next stable Drug code. A slug re-import keeps its original number. When `image_directory` is omitted, it defaults to `drug-images/<slug>/`; a missing directory is created and reported as having no images. For safety, imports can only read image directories contained within the project's `drug-images/` directory. See `drug-images/README.md` for the same format near the source folders.
+
+## Structure database
+
+The **Structure Database** mirrors the Drug Database workspace with search, category filtering, image galleries, and JSON bulk import. Structures use stable `Str<number>` codes, can link to multiple reactions and drugs, and are visible from both sides of every Drug–Structure relation.
+
+Place source images in `structure-images/<slug>/`. Import accepts a raw array or an object containing a `structures` array:
+
+```json
+{
+  "structures": [
+    {
+      "number": 1,
+      "name": "Imidazole",
+      "slug": "imidazole",
+      "categories": ["Heterocycle"],
+      "aliases": ["1,3-diazole"],
+      "description": "Optional notes",
+      "image_directory": "structure-images/imidazole",
+      "reaction_codes": ["Rxn4"],
+      "drug_codes": ["Drug3"]
+    }
+  ]
+}
+```
+
+Missing `Rxn`, `Drug`, or `Str` references are reported as import warnings while valid records continue. Re-import synchronizes relation order to the JSON list and does not create duplicate links. Omitting `structure_codes`/`drug_codes` preserves links created from the other importer; providing an explicit empty list clears them. Structure images use the same recursive discovery, 8 MB limit, change detection, and managed-media copy rules as Drug images.
 
 ## Import and export
 
@@ -156,6 +185,7 @@ Separate multiple values within a component column with a semicolon (`;`). V1 CS
 - `GET/PUT /api/settings/latex-shortcuts`
 - `GET /api/backups/status`, `POST /api/backups`
 - `GET /api/drugs`, `GET/DELETE /api/drugs/{id}`, `POST /api/drugs/import`
+- `GET /api/structures`, `GET/DELETE /api/structures/{id}`, `POST /api/structures/import`
 - `GET /api/export`, `POST /api/import`, `GET /api/health`
 
 Reaction responses expose `series`, `number`, derived `display_code`, `name`, optional `slug`, `summary`, `reaction_class`, `status`, `notes`, aliases, and incoming/outgoing generic relations. The database enforces unique `(series, number)` pairs. The seed loader validates the JSON schema version, values, unique reaction indices, and all alias/relation references before inserting reactions, aliases, and relations in a single transaction.

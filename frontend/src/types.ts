@@ -98,8 +98,37 @@ export interface DrugReactionLink {
   reaction: Reaction
 }
 
+export interface StructureReference {
+  id: number
+  number: number
+  display_code: string
+  name: string
+  slug: string
+  categories: string[]
+  image: MediaAsset | null
+}
+
+export interface DrugReference {
+  id: number
+  number: number
+  display_code: string
+  name: string
+  slug: string
+  chapters: string[]
+  functions: string[]
+  image: MediaAsset | null
+}
+
+export interface DrugStructureLink {
+  id: number
+  display_order: number
+  structure: StructureReference
+}
+
 export interface Drug {
   id: number
+  number: number
+  display_code: string
   name: string
   slug: string
   description: string | null
@@ -111,10 +140,12 @@ export interface Drug {
   updated_at: string
   image_links: DrugImage[]
   reaction_links: DrugReactionLink[]
+  structure_links: DrugStructureLink[]
 }
 
 export interface DrugImportInput {
   name: string
+  number?: number | null
   slug?: string | null
   description?: string | null
   chapters?: string[]
@@ -123,6 +154,7 @@ export interface DrugImportInput {
   image_directory?: string | null
   reaction_codes?: string[]
   reactions?: string[]
+  structure_codes?: string[]
 }
 
 export interface DrugImportResult {
@@ -130,6 +162,64 @@ export interface DrugImportResult {
   updated: number
   images_uploaded: number
   reactions_linked: number
+  structures_linked: number
+  warnings: string[]
+}
+
+export interface StructureImage {
+  id: number
+  source_path: string
+  display_order: number
+  asset: MediaAsset
+}
+
+export interface StructureReactionLink {
+  id: number
+  display_order: number
+  reaction: Reaction
+}
+
+export interface StructureDrugLink {
+  id: number
+  display_order: number
+  drug: DrugReference
+}
+
+export interface Structure {
+  id: number
+  number: number
+  display_code: string
+  name: string
+  slug: string
+  description: string | null
+  categories: string[]
+  aliases: string[]
+  image_directory: string
+  created_at: string
+  updated_at: string
+  image_links: StructureImage[]
+  reaction_links: StructureReactionLink[]
+  drug_links: StructureDrugLink[]
+}
+
+export interface StructureImportInput {
+  name: string
+  number?: number | null
+  slug?: string | null
+  description?: string | null
+  categories?: string[]
+  aliases?: string[]
+  image_directory?: string | null
+  reaction_codes?: string[]
+  drug_codes?: string[]
+}
+
+export interface StructureImportResult {
+  created: number
+  updated: number
+  images_uploaded: number
+  reactions_linked: number
+  drugs_linked: number
   warnings: string[]
 }
 

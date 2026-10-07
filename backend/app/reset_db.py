@@ -3,10 +3,13 @@ from sqlalchemy import delete
 from . import models
 from .database import Base, SessionLocal, engine
 from .seed import seed_database
+from .schema_upgrade import initialize_number_counters, upgrade_schema
 
 
 def main() -> None:
+    upgrade_schema(engine)
     Base.metadata.create_all(bind=engine)
+    initialize_number_counters(engine)
     with SessionLocal() as db:
         # Reset canonical study data without removing user preferences or uploaded media.
         db.execute(delete(models.Collection))

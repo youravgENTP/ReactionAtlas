@@ -28,6 +28,7 @@ backups/.*.tmp
 
 # Local drug image import folders (instructions remain tracked)
 drug-images/*/
+structure-images/*/
 
 # Logs
 *.log

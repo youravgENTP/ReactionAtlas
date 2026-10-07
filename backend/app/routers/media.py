@@ -80,6 +80,8 @@ def delete_media(asset_id: str, db: Session = Depends(get_db)):
         raise HTTPException(409, "Image is still used by a reaction")
     if db.scalar(select(models.DrugImage).where(models.DrugImage.media_asset_id == asset_id)):
         raise HTTPException(409, "Image is still used by a drug")
+    if db.scalar(select(models.StructureImage).where(models.StructureImage.media_asset_id == asset_id)):
+        raise HTTPException(409, "Image is still used by a structure")
     path = MEDIA_DIR / asset.stored_filename
     db.delete(asset)
     db.commit()

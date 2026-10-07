@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from . import crud, models, schemas
 from .database import Base, engine, get_db
 from .backup import backup_if_due, seconds_until_backup
-from .routers import backups, collections, components, drugs, media, reactions, settings
+from .routers import backups, collections, components, drugs, media, reactions, settings, structures
+from .schema_upgrade import initialize_number_counters, upgrade_schema
 from .seed import seed_database
 
 
@@ -30,7 +31,9 @@ async def backup_loop():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    upgrade_schema(engine)
     Base.metadata.create_all(bind=engine)
+    initialize_number_counters(engine)
     from .database import SessionLocal
     with SessionLocal() as db:
         seed_database(db)
@@ -64,6 +67,7 @@ app.include_router(media.router)
 app.include_router(settings.router)
 app.include_router(backups.router)
 app.include_router(drugs.router)
+app.include_router(structures.router)
 
 
 @app.get("/api/health")

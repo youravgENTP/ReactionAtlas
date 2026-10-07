@@ -59,6 +59,9 @@ class Reaction(Base):
     drug_links: Mapped[list["DrugReaction"]] = relationship(
         back_populates="reaction", cascade="all, delete-orphan"
     )
+    structure_links: Mapped[list["StructureReaction"]] = relationship(
+        back_populates="reaction", cascade="all, delete-orphan"
+    )
 
     @property
     def display_code(self) -> str:
@@ -252,8 +255,13 @@ class AppSetting(Base):
 
 class Drug(Base):
     __tablename__ = "drugs"
+    __table_args__ = (
+        UniqueConstraint("number", name="uq_drug_number"),
+        CheckConstraint("number > 0", name="ck_drug_number_positive"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[int] = mapped_column(Integer, index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text)
@@ -270,6 +278,17 @@ class Drug(Base):
     image_links: Mapped[list["DrugImage"]] = relationship(
         back_populates="drug", cascade="all, delete-orphan", order_by="DrugImage.display_order"
     )
+    structure_links: Mapped[list["DrugStructure"]] = relationship(
+        back_populates="drug", cascade="all, delete-orphan", order_by="DrugStructure.display_order"
+    )
+
+    @property
+    def display_code(self) -> str:
+        return f"Drug{self.number}"
+
+    @property
+    def image(self):
+        return self.image_links[0].asset if self.image_links else None
 
     @staticmethod
     def _decode_list(value: str) -> list[str]:
@@ -320,3 +339,90 @@ class DrugImage(Base):
 
     drug: Mapped[Drug] = relationship(back_populates="image_links")
     asset: Mapped[MediaAsset] = relationship()
+
+
+class Structure(Base):
+    __tablename__ = "structures"
+    __table_args__ = (
+        UniqueConstraint("number", name="uq_structure_number"),
+        CheckConstraint("number > 0", name="ck_structure_number_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[int] = mapped_column(Integer, index=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    categories_json: Mapped[str] = mapped_column(Text, default="[]")
+    aliases_json: Mapped[str] = mapped_column(Text, default="[]")
+    image_directory: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+    reaction_links: Mapped[list["StructureReaction"]] = relationship(
+        back_populates="structure", cascade="all, delete-orphan", order_by="StructureReaction.display_order"
+    )
+    image_links: Mapped[list["StructureImage"]] = relationship(
+        back_populates="structure", cascade="all, delete-orphan", order_by="StructureImage.display_order"
+    )
+    drug_links: Mapped[list["DrugStructure"]] = relationship(
+        back_populates="structure", cascade="all, delete-orphan", order_by="DrugStructure.display_order"
+    )
+
+    @property
+    def display_code(self) -> str:
+        return f"Str{self.number}"
+
+    @property
+    def categories(self) -> list[str]:
+        return Drug._decode_list(self.categories_json)
+
+    @property
+    def aliases(self) -> list[str]:
+        return Drug._decode_list(self.aliases_json)
+
+    @property
+    def image(self):
+        return self.image_links[0].asset if self.image_links else None
+
+
+class StructureReaction(Base):
+    __tablename__ = "structure_reactions"
+    __table_args__ = (UniqueConstraint("structure_id", "reaction_id", name="uq_structure_reaction"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    structure_id: Mapped[int] = mapped_column(ForeignKey("structures.id", ondelete="CASCADE"), index=True)
+    reaction_id: Mapped[int] = mapped_column(ForeignKey("reactions.id", ondelete="CASCADE"), index=True)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    structure: Mapped[Structure] = relationship(back_populates="reaction_links")
+    reaction: Mapped[Reaction] = relationship(back_populates="structure_links")
+
+
+class StructureImage(Base):
+    __tablename__ = "structure_images"
+    __table_args__ = (UniqueConstraint("structure_id", "source_path", name="uq_structure_image_source"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    structure_id: Mapped[int] = mapped_column(ForeignKey("structures.id", ondelete="CASCADE"), index=True)
+    media_asset_id: Mapped[str] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    source_path: Mapped[str] = mapped_column(String(700))
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    structure: Mapped[Structure] = relationship(back_populates="image_links")
+    asset: Mapped[MediaAsset] = relationship()
+
+
+class DrugStructure(Base):
+    __tablename__ = "drug_structures"
+    __table_args__ = (UniqueConstraint("drug_id", "structure_id", name="uq_drug_structure"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    drug_id: Mapped[int] = mapped_column(ForeignKey("drugs.id", ondelete="CASCADE"), index=True)
+    structure_id: Mapped[int] = mapped_column(ForeignKey("structures.id", ondelete="CASCADE"), index=True)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    drug: Mapped[Drug] = relationship(back_populates="structure_links")
+    structure: Mapped[Structure] = relationship(back_populates="drug_links")

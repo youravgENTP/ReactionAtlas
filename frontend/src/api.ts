@@ -1,4 +1,4 @@
-import type { BackupStatus, Collection, Component, Drug, DrugImportInput, DrugImportResult, LatexShortcut, MediaAsset, Reaction, ReactionInput, ReactionRichTextInput } from './types'
+import type { BackupStatus, Collection, Component, Drug, DrugImportInput, DrugImportResult, LatexShortcut, MediaAsset, Reaction, ReactionInput, ReactionRichTextInput, Structure, StructureImportInput, StructureImportResult } from './types'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -40,6 +40,8 @@ export const api = {
   createBackup: () => request<BackupStatus>('/api/backups', { method: 'POST' }),
   drugs: () => request<Drug[]>('/api/drugs'),
   importDrugs: (data: DrugImportInput[]) => request<DrugImportResult>('/api/drugs/import', { method: 'POST', body: JSON.stringify(data) }),
+  structures: () => request<Structure[]>('/api/structures'),
+  importStructures: (data: StructureImportInput[]) => request<StructureImportResult>('/api/structures/import', { method: 'POST', body: JSON.stringify(data) }),
   uploadImage: async (file: File) => {
     const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
       const image = new Image(); const url = URL.createObjectURL(file)
