@@ -4,7 +4,7 @@ import { ReactionDetail } from './ReactionDetail'
 import { ReactionForm } from './ReactionForm'
 import type { Reaction, ReactionInput, Role } from './types'
 import { useLatex } from './latex'
-import { FormattedText } from './inlineMarkup'
+import { FormattedText, RichFormattedText } from './inlineMarkup'
 
 function parseCsv(text: string): ReactionInput[] {
   const lines = text.trim().split(/\r?\n/)
@@ -57,7 +57,7 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
         const records = (raw as { reactions: Reaction[] }).reactions
         items = records.map((r) => ({
           series: r.series, number: r.number, name: r.name, slug: r.slug, summary: r.summary,
-          reaction_class: r.reaction_class, status: r.status, notes: r.notes,
+          reaction_class: r.reaction_class, status: r.status, notes: r.notes, rich_text: r.rich_text,
           components: r.components.map((c) => ({ name: c.component.name, role: c.role, display_order: c.display_order, detail: c.detail })),
         }))
       } else throw new Error('JSON must be an array or a ReactionAtlas export')
@@ -82,7 +82,7 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
     <div className="library-layout">
       <aside className="results-panel"><div className="panel-label">{reactions.length} {reactions.length === 1 ? 'reaction' : 'reactions'}</div>
         <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => setSelected(reaction)}>
-          {reaction.image && <img className="result-thumbnail" src={reaction.image.content_url} alt="" />}<span className="index-line"><span className={`series-label ${reaction.series}`}>{reaction.series}</span><span className="rxn-index">{reaction.display_code}</span></span><strong><FormattedText>{reaction.name}</FormattedText></strong><small><FormattedText>{reaction.reaction_class || 'Unclassified'}</FormattedText></small>
+          {reaction.image && <img className="result-thumbnail" src={reaction.image.content_url} alt="" />}<span className="index-line"><span className={`series-label ${reaction.series}`}>{reaction.series}</span><span className="rxn-index">{reaction.display_code}</span></span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><small><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></small>
           {search && <span className="component-hint">{reaction.aliases.filter((a) => a.alias.toLowerCase().includes(search.toLowerCase())).map((a) => `${a.alias} (${a.alias_type.replace('_', ' ')})`).concat(reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name)).join(' · ')}</span>}
         </button>)}</div>
       </aside>

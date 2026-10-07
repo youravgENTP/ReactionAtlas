@@ -53,6 +53,9 @@ class Reaction(Base):
     image_link: Mapped["ReactionImage | None"] = relationship(
         back_populates="reaction", cascade="all, delete-orphan", uselist=False
     )
+    rich_text_record: Mapped["ReactionRichText | None"] = relationship(
+        back_populates="reaction", cascade="all, delete-orphan", uselist=False
+    )
 
     @property
     def display_code(self) -> str:
@@ -61,6 +64,17 @@ class Reaction(Base):
     @property
     def image(self):
         return self.image_link.asset if self.image_link else None
+
+    @property
+    def rich_text(self) -> dict[str, str]:
+        if not self.rich_text_record:
+            return {}
+        import json
+        try:
+            value = json.loads(self.rich_text_record.content)
+            return value if isinstance(value, dict) else {}
+        except (TypeError, ValueError):
+            return {}
 
 
 class ReactionAlias(Base):
@@ -212,6 +226,17 @@ class ReactionImage(Base):
 
     reaction: Mapped[Reaction] = relationship(back_populates="image_link")
     asset: Mapped[MediaAsset] = relationship()
+
+
+class ReactionRichText(Base):
+    __tablename__ = "reaction_rich_text"
+
+    reaction_id: Mapped[int] = mapped_column(
+        ForeignKey("reactions.id", ondelete="CASCADE"), primary_key=True
+    )
+    content: Mapped[str] = mapped_column(Text, default="{}")
+
+    reaction: Mapped[Reaction] = relationship(back_populates="rich_text_record")
 
 
 class AppSetting(Base):

@@ -1,3 +1,4 @@
+import json
 import re
 
 from fastapi import HTTPException
@@ -40,6 +41,7 @@ def reaction_query():
         selectinload(models.Reaction.incoming_relations).selectinload(models.ReactionRelation.source_reaction),
         selectinload(models.Reaction.incoming_relations).selectinload(models.ReactionRelation.target_reaction),
         selectinload(models.Reaction.image_link).selectinload(models.ReactionImage.asset),
+        selectinload(models.Reaction.rich_text_record),
     )
 
 
@@ -106,12 +108,13 @@ def create_reaction(db: Session, data: schemas.ReactionCreate) -> models.Reactio
         models.Reaction.series == data.series, models.Reaction.number == data.number
     )):
         raise HTTPException(409, f"Reaction {data.series} {data.number} already exists")
-    fields = data.model_dump(exclude={"components", "image_asset_id"})
+    fields = data.model_dump(exclude={"components", "image_asset_id", "rich_text"})
     reaction = models.Reaction(**fields)
     db.add(reaction)
     db.flush()
     save_components(db, reaction, data.components)
     save_reaction_image(db, reaction, data.image_asset_id)
+    save_reaction_rich_text(reaction, data.rich_text)
     db.commit()
     return get_reaction(db, reaction.id)
 
@@ -127,10 +130,11 @@ def update_reaction(db: Session, reaction_id: int, data: schemas.ReactionCreate)
     )
     if duplicate:
         raise HTTPException(409, f"Reaction {data.series} {data.number} already exists")
-    for key, value in data.model_dump(exclude={"components", "image_asset_id"}).items():
+    for key, value in data.model_dump(exclude={"components", "image_asset_id", "rich_text"}).items():
         setattr(reaction, key, value)
     save_components(db, reaction, data.components)
     save_reaction_image(db, reaction, data.image_asset_id)
+    save_reaction_rich_text(reaction, data.rich_text)
     db.commit()
     return get_reaction(db, reaction.id)
 
@@ -155,6 +159,20 @@ def save_reaction_image(db: Session, reaction: models.Reaction, media_asset_id: 
         reaction.image_link = models.ReactionImage(asset=asset)
 
 
+def save_reaction_rich_text(reaction: models.Reaction, content: dict[str, str]):
+    allowed = {"name", "reaction_class", "summary", "notes"}
+    cleaned = {key: value for key, value in content.items()
+               if key in allowed and isinstance(value, str) and value.strip()}
+    if not cleaned:
+        reaction.rich_text_record = None
+        return
+    encoded = json.dumps(cleaned, ensure_ascii=False)
+    if reaction.rich_text_record:
+        reaction.rich_text_record.content = encoded
+    else:
+        reaction.rich_text_record = models.ReactionRichText(content=encoded)
+
+
 def collection_query():
     return select(models.Collection).options(
         selectinload(models.Collection.reaction_links)
@@ -176,6 +194,9 @@ def collection_query():
         .selectinload(models.CollectionReaction.reaction)
         .selectinload(models.Reaction.image_link)
         .selectinload(models.ReactionImage.asset),
+        selectinload(models.Collection.reaction_links)
+        .selectinload(models.CollectionReaction.reaction)
+        .selectinload(models.Reaction.rich_text_record),
         selectinload(models.Collection.reaction_links)
         .selectinload(models.CollectionReaction.reaction)
         .selectinload(models.Reaction.incoming_relations)

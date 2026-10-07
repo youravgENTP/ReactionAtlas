@@ -55,6 +55,7 @@ export interface Reaction {
   outgoing_relations: ReactionRelation[]
   incoming_relations: ReactionRelation[]
   image: MediaAsset | null
+  rich_text: Record<string, string>
 }
 
 export interface MediaAsset {
@@ -93,6 +94,7 @@ export interface ReactionInput {
   notes: string | null
   components: ComponentInput[]
   image_asset_id?: string | null
+  rich_text?: Record<string, string>
 }
 
 export interface RichTextValue { text: string; html?: string }

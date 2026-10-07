@@ -59,6 +59,7 @@ class ReactionBase(BaseModel):
 class ReactionCreate(ReactionBase):
     components: list[ReactionComponentInput] = Field(default_factory=list)
     image_asset_id: str | None = None
+    rich_text: dict[str, str] = Field(default_factory=dict)
 
 
 class MediaAssetRead(BaseModel):
@@ -104,6 +105,7 @@ class ReactionRead(ReactionBase):
     outgoing_relations: list[ReactionRelationRead]
     incoming_relations: list[ReactionRelationRead]
     image: MediaAssetRead | None
+    rich_text: dict[str, str]
 
 
 class ReactionImageUpdate(BaseModel):

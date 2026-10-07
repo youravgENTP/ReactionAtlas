@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { sanitizeRichHtml } from './richText'
 
 export type InlineToken = { type: 'text' | 'sub' | 'sup'; text: string; start: number; end: number }
 
@@ -41,6 +42,11 @@ export function tokenizeInlineMarkup(value: string, includeEnd = true): InlineTo
 export function FormattedText({ children }: { children: string | null | undefined }) {
   if (!children) return null
   return <>{tokenizeInlineMarkup(children).map((token, index): ReactNode => token.type === 'sub' ? <sub key={index}>{token.text}</sub> : token.type === 'sup' ? <sup key={index}>{token.text}</sup> : token.text)}</>
+}
+
+export function RichFormattedText({ text, html }: { text: string | null | undefined; html?: string | null }) {
+  if (html) return <span className="rich-formatted-text" dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(html) }} />
+  return <FormattedText>{text}</FormattedText>
 }
 
 function codePointLength(value: string, index: number) { return value.codePointAt(index)! > 0xffff ? 2 : 1 }

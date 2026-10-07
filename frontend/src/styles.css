@@ -42,7 +42,7 @@ input:focus, textarea:focus, select:focus { border-color: #498168; box-shadow: 0
 .result-item.active { background: #edf4f0; border-left-color: #2d6a50; }
 .result-item strong { font-size: 14px; }
 .result-item small { color: #79807b; }
-.rxn-index { color: #276047; font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.rxn-index { color: #276047; font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: none; }
 .rxn-index.large { font-size: 12px; margin-bottom: 7px; }
 .index-line { display: flex; align-items: center; gap: 7px; }
 .series-label { color: #6d756f; font-size: 9px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
@@ -147,9 +147,15 @@ textarea { resize: vertical; line-height: 1.45; }
 .rich-toolbar { display: none; position: absolute; left: 0; top: -31px; z-index: 2; padding: 3px; gap: 2px; background: white; border: 1px solid #dce0dc; border-radius: 5px; box-shadow: 0 4px 12px rgb(0 0 0 / 8%); }
 .rich-editor:focus-within .rich-toolbar { display: flex; }
 .rich-toolbar button { background: white; color: #333; border: 0; padding: 3px 7px; }
-.rich-toolbar label { display: block; }
+.rich-toolbar > span { display: block; }
 .rich-toolbar input[type=color] { width: 26px; height: 24px; padding: 2px; }
 .rich-editor [contenteditable] { min-height: 34px; padding: 6px 4px; outline: none; line-height: 1.7; }
+.rich-form-label .rich-editor { border: 1px solid #cbd0cc; border-radius: 5px; background: #fff; color: #222; text-transform: none; letter-spacing: normal; font-size: 14px; font-weight: 400; }
+.rich-form-label .rich-editor:focus-within { border-color: #498168; box-shadow: 0 0 0 2px #dcebe3; }
+.rich-form-label .rich-editor [contenteditable] { min-height: 40px; padding: 8px 10px; }
+.rich-form-label .rich-editor.single-line [contenteditable] { white-space: nowrap; overflow-x: auto; overflow-y: hidden; }
+.rich-form-label.wide .rich-editor:not(.single-line) [contenteditable] { min-height: 82px; }
+.rich-formatted-text { white-space: inherit; }
 .rich-editor [contenteditable]:empty::before { content: attr(data-placeholder); color: #abb0ad; pointer-events: none; }
 .rich-editor.heading-1 [contenteditable] { font: 500 31px/1.3 Georgia, serif; border-bottom: 1px solid #e1e4e2; }
 .rich-editor.heading-2 [contenteditable] { font: 500 24px/1.35 Georgia, serif; }

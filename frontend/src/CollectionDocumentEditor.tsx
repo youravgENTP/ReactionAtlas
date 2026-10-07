@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { api } from './api'
 import { useLatex } from './latex'
 import type { CollectionBlock, CollectionDocument, Reaction, RichTextValue } from './types'
-import { FormattedText, tokenizeInlineMarkup } from './inlineMarkup'
+import { RichFormattedText, tokenizeInlineMarkup } from './inlineMarkup'
+import { sanitizeRichHtml } from './richText'
 
 const id = () => crypto.randomUUID()
 
@@ -54,7 +55,7 @@ export function CollectionDocumentEditor({ document, reactions, onChange, onOpen
   </div>
 }
 
-function RichEditor({ value, heading, onChange }: { value: RichTextValue; heading?: 1 | 2 | 3; onChange: (value: RichTextValue) => void }) {
+export function RichEditor({ value, heading, singleLine = false, placeholder, onChange }: { value: RichTextValue; heading?: 1 | 2 | 3; singleLine?: boolean; placeholder?: string; onChange: (value: RichTextValue) => void }) {
   const editor = useRef<HTMLDivElement>(null)
   const composing = useRef(false)
   const { shortcuts } = useLatex()
@@ -68,9 +69,9 @@ function RichEditor({ value, heading, onChange }: { value: RichTextValue; headin
     onChange({ text: editor.current.innerText, html: sanitizeRichHtml(editor.current.innerHTML) })
   }
   const command = (name: string, value?: string) => { document.execCommand(name, false, value); emit() }
-  return <div className={`rich-editor ${heading ? `heading-${heading}` : ''}`}>
-    <div className="rich-toolbar"><button onMouseDown={(e) => e.preventDefault()} onClick={() => command('bold')}><b>B</b></button><button onMouseDown={(e) => e.preventDefault()} onClick={() => command('italic')}><i>I</i></button><button onMouseDown={(e) => e.preventDefault()} onClick={() => command('underline')}><u>U</u></button><button onMouseDown={(e) => e.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')}>Highlight</button><label title="Text color"><input type="color" onChange={(e) => command('foreColor', e.target.value)} /></label></div>
-    <div ref={editor} contentEditable suppressContentEditableWarning data-placeholder={heading ? `Heading ${heading}` : 'Write something…'} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false; emit() }} onInput={() => { if (!composing.current) emit() }} onBlur={() => emit(true)} />
+  return <div className={`rich-editor ${heading ? `heading-${heading}` : ''} ${singleLine ? 'single-line' : ''}`}>
+    <div className="rich-toolbar"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('bold')}><b>B</b></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('italic')}><i>I</i></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('underline')}><u>U</u></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')}>Highlight</button><span title="Text color"><input aria-label="Text color" type="color" onChange={(e) => command('foreColor', e.target.value)} /></span></div>
+    <div ref={editor} contentEditable suppressContentEditableWarning data-placeholder={placeholder ?? (heading ? `Heading ${heading}` : 'Write something…')} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false; emit() }} onInput={() => { if (!composing.current) emit() }} onBlur={() => emit(true)} onKeyDown={(event) => { if (singleLine && event.key === 'Enter') { event.preventDefault(); emit(true) } }} />
   </div>
 }
 
@@ -92,7 +93,7 @@ function CollectionImage({ block, onChange }: { block: Extract<CollectionBlock, 
 
 function ReactionEmbed({ block, reactions, onChange, onOpenReaction }: { block: Extract<CollectionBlock, { type: 'reaction' }>; reactions: Reaction[]; onChange: (block: Extract<CollectionBlock, { type: 'reaction' }>) => void; onOpenReaction: (code: string) => void }) {
   const reaction = reactions.find((item) => item.id === block.reaction_id)
-  return <div className="reaction-embed"><select value={block.reaction_id ?? ''} onChange={(e) => onChange({ ...block, reaction_id: Number(e.target.value) || null })}><option value="">Choose a reaction</option>{reactions.map((item) => <option value={item.id} key={item.id}>{item.display_code} — {item.name}</option>)}</select>{reaction && <button className="embedded-card" onClick={() => onOpenReaction(reaction.display_code)}>{reaction.image && <img src={reaction.image.content_url} alt="" />}<span><small>{reaction.display_code}</small><strong><FormattedText>{reaction.name}</FormattedText></strong><em><FormattedText>{reaction.reaction_class || 'Unclassified'}</FormattedText></em></span></button>}</div>
+  return <div className="reaction-embed"><select value={block.reaction_id ?? ''} onChange={(e) => onChange({ ...block, reaction_id: Number(e.target.value) || null })}><option value="">Choose a reaction</option>{reactions.map((item) => <option value={item.id} key={item.id}>{item.display_code} — {item.name}</option>)}</select>{reaction && <button className="embedded-card" onClick={() => onOpenReaction(reaction.display_code)}>{reaction.image && <img src={reaction.image.content_url} alt="" />}<span><small>{reaction.display_code}</small><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><em><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></em></span></button>}</div>
 }
 
 function normalizeTextNodes(root: HTMLElement, shortcuts: import('./types').LatexShortcut[], includeEnd: boolean) {
@@ -149,20 +150,6 @@ function richCaretOffset(root: HTMLElement) {
 function placeRichCaret(root: HTMLElement, offset: number) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let remaining = offset
   while (walker.nextNode()) { const node = walker.currentNode as Text; if (remaining <= node.length) { const range = document.createRange(); range.setStart(node, remaining); range.collapse(true); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range); return } remaining -= node.length }
-}
-
-function sanitizeRichHtml(html: string) {
-  const document = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
-  const root = document.body.firstElementChild!
-  const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'SUB', 'SUP', 'BR', 'DIV', 'SPAN'])
-  for (const element of [...root.querySelectorAll('*')]) {
-    if (!allowed.has(element.tagName)) { element.replaceWith(...element.childNodes); continue }
-    for (const attribute of [...element.attributes]) if (attribute.name !== 'style') element.removeAttribute(attribute.name)
-    const style = element.getAttribute('style') ?? ''
-    const safe = style.split(';').map((part) => part.trim()).filter((part) => /^(color|background-color|text-decoration):\s*(#[0-9a-f]{3,6}|underline|line-through)$/i.test(part)).join(';')
-    if (safe) element.setAttribute('style', safe); else element.removeAttribute('style')
-  }
-  return root.innerHTML
 }
 
 function escapeHtml(value: string) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }

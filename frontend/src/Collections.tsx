@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import { CollectionDocumentEditor, parseCollectionDocument, serializeCollectionDocument } from './CollectionDocumentEditor'
 import { useLatex } from './latex'
-import { FormattedText } from './inlineMarkup'
+import { FormattedText, RichFormattedText } from './inlineMarkup'
 import type { Collection, CollectionDocument, Reaction } from './types'
 
 export function Collections({ onOpenReaction }: { onOpenReaction: (index: string) => void }) {
@@ -56,7 +56,7 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
       <aside className="reaction-cards"><div className="panel-label">REACTION CARDS · {active.reaction_links.length}</div>
         {active.reaction_links.map((link, index) => <article className="mini-card" id={`card-${link.reaction.display_code}`} key={link.id}>
           {link.reaction.image && <img className="mini-card-image" src={link.reaction.image.content_url} alt="" />}
-          <button className="card-main" onClick={() => onOpenReaction(link.reaction.display_code)}><span className="index-line"><span className={`series-label ${link.reaction.series}`}>{link.reaction.series}</span><span className="rxn-index">{link.reaction.display_code}</span></span><strong><FormattedText>{link.reaction.name}</FormattedText></strong><small><FormattedText>{link.reaction.reaction_class}</FormattedText></small></button>
+          <button className="card-main" onClick={() => onOpenReaction(link.reaction.display_code)}><span className="index-line"><span className={`series-label ${link.reaction.series}`}>{link.reaction.series}</span><span className="rxn-index">{link.reaction.display_code}</span></span><strong><RichFormattedText text={link.reaction.name} html={link.reaction.rich_text.name} /></strong><small><RichFormattedText text={link.reaction.reaction_class} html={link.reaction.rich_text.reaction_class} /></small></button>
           <div className="card-controls"><button disabled={index === 0} onClick={() => void move(index, -1)}>↑</button><button disabled={index === active.reaction_links.length - 1} onClick={() => void move(index, 1)}>↓</button><button onClick={() => void remove(link.reaction.id)}>×</button></div>
         </article>)}
         <div className="add-reaction"><input placeholder="Add reaction by index or name…" value={addSearch} onBlur={(e) => setAddSearch(transform(e.target.value, true))} onChange={(e) => setAddSearch(transform(e.target.value))} />{addSearch && <div className="add-results">{available.map((reaction) => <button key={reaction.id} onClick={() => void add(reaction.id)}><span className="rxn-index">{reaction.display_code}</span>{reaction.name}</button>)}</div>}</div>
