@@ -7,6 +7,8 @@ import { useLatex } from './latex'
 import { FormattedText, RichFormattedText } from './inlineMarkup'
 import { reactionSeriesLabel } from './reactionSeries'
 
+const sidebarPreferenceKey = 'reactionAtlas.library.sidebarCollapsed'
+
 function parseCsv(text: string): ReactionInput[] {
   const lines = text.trim().split(/\r?\n/)
   const headers = lines.shift()?.split(',').map((value) => value.trim()) ?? []
@@ -29,6 +31,9 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
   const [search, setSearch] = useState(initialIndex ?? '')
   const [editing, setEditing] = useState<Reaction | 'new' | null>(null)
   const [error, setError] = useState('')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return window.localStorage.getItem(sidebarPreferenceKey) === 'true' } catch { return false }
+  })
   const fileInput = useRef<HTMLInputElement>(null)
   const { transform } = useLatex()
 
@@ -39,6 +44,9 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load reactions') }
   }
   useEffect(() => { const timer = window.setTimeout(() => void load(search), 180); return () => clearTimeout(timer) }, [search])
+  useEffect(() => {
+    try { window.localStorage.setItem(sidebarPreferenceKey, String(sidebarCollapsed)) } catch { /* Storage may be unavailable. */ }
+  }, [sidebarCollapsed])
 
   const save = async (data: ReactionInput) => {
     const saved = editing === 'new' ? await api.createReaction(data) : await api.updateReaction((editing as Reaction).id, data)
@@ -86,13 +94,14 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
       <button onClick={() => setEditing('new')}>+ New reaction</button>
     </div>
     {error && <div className="error page-error">{error}</div>}
-    <div className="library-layout">
-      <aside className="results-panel"><div className="panel-label">{reactions.length} {reactions.length === 1 ? 'reaction' : 'reactions'}</div>
+    <div className={`library-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <aside className="results-panel" aria-hidden={sidebarCollapsed}><div className="panel-label">{reactions.length} {reactions.length === 1 ? 'reaction' : 'reactions'}</div>
         <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => setSelected(reaction)}>
           {reaction.image && <img className="result-thumbnail" src={reaction.image.content_url} alt="" />}<span className="index-line"><span className={`series-label ${reaction.series}`}>{reactionSeriesLabel[reaction.series]}</span><span className="rxn-index">{reaction.display_code}</span></span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><small><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></small>
           {search && <span className="component-hint">{reaction.aliases.filter((a) => a.alias.toLowerCase().includes(search.toLowerCase())).map((a) => `${a.alias} (${a.alias_type.replace('_', ' ')})`).concat(reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name)).join(' · ')}</span>}
         </button>)}</div>
       </aside>
+      <button type="button" className="library-sidebar-toggle" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? '>>' : '<<'}</button>
       <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} onEdit={() => setEditing(selected)} onDelete={() => void remove()} onSave={saveDirect} /> : <div className="empty-state"><span>RA</span><h2>No reaction selected</h2><p>Search your atlas or create a reaction record.</p></div>}</main>
     </div>
     {editing && <ReactionForm reaction={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} onSave={save} />}

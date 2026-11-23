@@ -31,7 +31,7 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave }: { reactio
     setDraft((current) => {
       const richText = { ...(current.rich_text ?? {}) }
       const text = content.text.trim() ? content.text : ''
-      if (text && content.html) richText[key] = content.html; else delete richText[key]
+      if ((text || content.html?.includes('<img')) && content.html) richText[key] = content.html; else delete richText[key]
       return { ...current, [key]: text, rich_text: richText }
     })
   }
@@ -66,7 +66,7 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave }: { reactio
     })}</div>
     {reaction.aliases.length > 0 && <section className="notes"><h3>Aliases</h3><ul className="metadata-list">{reaction.aliases.map((alias) => <li key={alias.id}><strong>{alias.alias}</strong> <span>{alias.alias_type.replace('_', ' ')}</span>{alias.note && <small>{alias.note}</small>}</li>)}</ul></section>}
     {relations.length > 0 && <section className="notes"><h3>Relations</h3><ul className="metadata-list">{relations.map((relation) => <li key={`${relation.direction}-${relation.id}`}>{relation.direction === 'incoming' && <><strong>{relation.source_display_code}</strong> {relation.source_name} </>}<span>{relationLabels[relation.relation_type]}</span>{relation.direction === 'outgoing' ? <><strong>{relation.target_display_code}</strong> {relation.target_name}</> : 'this reaction'}</li>)}</ul></section>}
-    <section className="notes detail-notes-editor"><h3>Notes</h3><RichEditor placeholder="Add notes…" value={value('notes')} onChange={(content) => change('notes', content)} /></section>
+    <section className="notes detail-notes-editor"><h3>Notes</h3><RichEditor allowImages placeholder="Add notes…" value={value('notes')} onChange={(content) => change('notes', content)} /></section>
     {dirty && <div className="inline-save-bar"><span>Unsaved rich-text changes · ⌘S to save</span><button className="secondary" disabled={saving} onClick={() => setDraft(original)}>Discard</button><button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save changes'}</button></div>}
   </article>
 }
