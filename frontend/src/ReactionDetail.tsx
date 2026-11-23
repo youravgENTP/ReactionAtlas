@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Reaction, ReactionInput, ReactionRichTextInput, RichTextValue, Role } from './types'
 import { FormattedText } from './inlineMarkup'
 import { RichEditor } from './CollectionDocumentEditor'
+import { HierarchicalDocumentEditor } from './HierarchicalDocumentEditor'
 import { reactionSeriesLabel } from './reactionSeries'
+import { parseStudyDocument, serializeStudyDocument, studyDocumentText } from './studyDocument'
+import type { StudyDocument } from './types'
 
 const groups: [Role, string][] = [['reactant', 'Reactants'], ['product', 'Products'], ['reagent', 'Reagents'], ['catalyst', 'Catalysts'], ['solvent', 'Solvents'], ['condition', 'Conditions'], ['other', 'Other']]
 const relationLabels = { subtype_of: 'is a subtype of', application_of: 'is an application of', method_for: 'is a method for', related_to: 'is related to' }
@@ -26,6 +29,8 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave, onOpenDrug 
   useEffect(() => { setDraft(inputFromReaction(reaction)); setError('') }, [reaction.id, reaction.updated_at])
   const original = useMemo(() => inputFromReaction(reaction), [reaction])
   const dirty = JSON.stringify(draft) !== JSON.stringify(original)
+  const summaryDocument = useMemo(() => parseStudyDocument(draft.rich_text?.summary_document, { text: draft.summary ?? '', html: draft.rich_text?.summary }), [draft.rich_text?.summary_document, draft.rich_text?.summary, draft.summary])
+  const notesDocument = useMemo(() => parseStudyDocument(draft.rich_text?.notes_document, { text: draft.notes ?? '', html: draft.rich_text?.notes }), [draft.rich_text?.notes_document, draft.rich_text?.notes, draft.notes])
   const value = (key: RichKey): RichTextValue => ({ text: String(draft[key] ?? ''), html: draft.rich_text?.[key] })
   const change = (key: RichKey, content: RichTextValue) => {
     setDraft((current) => {
@@ -33,6 +38,13 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave, onOpenDrug 
       const text = content.text.trim() ? content.text : ''
       if ((text || content.html?.includes('<img')) && content.html) richText[key] = content.html; else delete richText[key]
       return { ...current, [key]: text, rich_text: richText }
+    })
+  }
+  const changeDocument = (key: 'summary' | 'notes', document: StudyDocument) => {
+    setDraft((current) => {
+      const richText = { ...(current.rich_text ?? {}), [`${key}_document`]: serializeStudyDocument(document) }
+      delete richText[key]
+      return { ...current, [key]: studyDocumentText(document) || null, rich_text: richText }
     })
   }
   const save = async () => {
@@ -56,7 +68,7 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave, onOpenDrug 
     {error && <div className="error inline-editor-error">{error}</div>}
     <section className="detail-rich-fields">
       <label>Reaction class<RichEditor singleLine placeholder="Add a reaction class…" value={value('reaction_class')} onChange={(content) => change('reaction_class', content)} /></label>
-      <label>Summary<RichEditor placeholder="Add a summary…" value={value('summary')} onChange={(content) => change('summary', content)} /></label>
+      <div className="hierarchical-field"><span>Summary</span><HierarchicalDocumentEditor placeholder="Add a summary…" document={summaryDocument} onChange={(document) => changeDocument('summary', document)} /></div>
     </section>
     {reaction.image && <img className="reaction-hero" src={reaction.image.content_url} alt={`${reaction.name} reaction`} />}
     <div className="role-grid">{groups.map(([role, title]) => {
@@ -67,7 +79,7 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave, onOpenDrug 
     {reaction.aliases.length > 0 && <section className="notes"><h3>Aliases</h3><ul className="metadata-list">{reaction.aliases.map((alias) => <li key={alias.id}><strong>{alias.alias}</strong> <span>{alias.alias_type.replace('_', ' ')}</span>{alias.note && <small>{alias.note}</small>}</li>)}</ul></section>}
     {relations.length > 0 && <section className="notes"><h3>Relations</h3><ul className="metadata-list">{relations.map((relation) => <li key={`${relation.direction}-${relation.id}`}>{relation.direction === 'incoming' && <><strong>{relation.source_display_code}</strong> {relation.source_name} </>}<span>{relationLabels[relation.relation_type]}</span>{relation.direction === 'outgoing' ? <><strong>{relation.target_display_code}</strong> {relation.target_name}</> : 'this reaction'}</li>)}</ul></section>}
     <section className="notes"><h3>Linked drugs</h3>{reaction.drug_links.length ? <div className="reaction-drug-links">{reaction.drug_links.map(({ drug }) => <button type="button" key={drug.id} onClick={() => onOpenDrug(drug.display_code)}>{drug.image && <img src={drug.image.content_url} alt="" />}<span><small>{drug.display_code}</small><strong>{drug.name}</strong><em>{drug.chapters.join(' · ') || 'Uncategorized'}</em></span><b>Open →</b></button>)}</div> : <p className="muted compact">No drugs are linked to this reaction.</p>}</section>
-    <section className="notes detail-notes-editor"><h3>Notes</h3><RichEditor allowImages placeholder="Add notes…" value={value('notes')} onChange={(content) => change('notes', content)} /></section>
+    <section className="notes detail-notes-editor"><h3>Notes</h3><HierarchicalDocumentEditor placeholder="Add notes…" document={notesDocument} onChange={(document) => changeDocument('notes', document)} /></section>
     {dirty && <div className="inline-save-bar"><span>Unsaved rich-text changes · ⌘S to save</span><button className="secondary" disabled={saving} onClick={() => setDraft(original)}>Discard</button><button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save changes'}</button></div>}
   </article>
 }

@@ -180,7 +180,7 @@ def save_reaction_image(db: Session, reaction: models.Reaction, media_asset_id: 
 
 
 def save_reaction_rich_text(reaction: models.Reaction, content: dict[str, str]):
-    allowed = {"name", "reaction_class", "summary", "notes"}
+    allowed = {"name", "reaction_class", "summary", "notes", "summary_document", "notes_document"}
     cleaned = {key: value for key, value in content.items()
                if key in allowed and isinstance(value, str) and value.strip()}
     if not cleaned:

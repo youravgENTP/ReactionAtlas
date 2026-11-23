@@ -39,6 +39,7 @@ export const api = {
   backupStatus: () => request<BackupStatus>('/api/backups/status'),
   createBackup: () => request<BackupStatus>('/api/backups', { method: 'POST' }),
   drugs: () => request<Drug[]>('/api/drugs'),
+  updateDrugDescription: (drugId: number, description: string | null, descriptionDocument: string | null) => request<Drug>(`/api/drugs/${drugId}/description`, { method: 'PATCH', body: JSON.stringify({ description, description_document: descriptionDocument }) }),
   linkDrugReaction: (drugId: number, reactionId: number) => request<Drug>(`/api/drugs/${drugId}/reactions`, { method: 'POST', body: JSON.stringify({ reaction_id: reactionId }) }),
   unlinkDrugReaction: (drugId: number, reactionId: number) => request<Drug>(`/api/drugs/${drugId}/reactions/${reactionId}`, { method: 'DELETE' }),
   reorderDrugReactions: (drugId: number, reactionIds: number[]) => request<Drug>(`/api/drugs/${drugId}/reactions/reorder`, { method: 'PUT', body: JSON.stringify({ reaction_ids: reactionIds }) }),

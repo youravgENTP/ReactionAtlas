@@ -26,3 +26,13 @@ Example format only (this file does not create a drug):
 ```
 
 `number` is optional for a new record and becomes the stable `Drug<number>` code. Re-imports match by slug and retain the existing number. Omitting `reaction_codes` preserves current reaction links; `[]` clears them; a non-empty list replaces them in that order. `structure_codes` links records from the Structure Database and retains its existing omission semantics.
+
+## Curated Wikimedia structures
+
+Run this from the project root to verify and download the curated structures for the 24 stable Drug records:
+
+```sh
+python3 scripts/sync_wikimedia_drug_images.py
+```
+
+The source is an SVG on Wikimedia Commons whenever available. Because the existing importer accepts raster formats, the script downloads Commons' 1600 px PNG rendering as `drug-images/<slug>/wikimedia-structure.png`. Source folders and managed media are intentionally ignored by Git; `data/drug-image-sources.json` is the tracked provenance and checksum manifest. Run the normal Drug JSON import/sync after downloading to copy the images into `data/media/` and link them to the existing records. The script itself never changes the database.

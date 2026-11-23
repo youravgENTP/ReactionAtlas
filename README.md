@@ -103,6 +103,8 @@ Create a collection from the **Collections** page, then open it to use the study
 
 The right side is a block document editor. Add rich-text paragraphs, headings, images, dividers, and embedded cards for reactions already linked to the collection. Text blocks include bold, italic, underline, highlight, color, and the same LaTeX shortcuts used by the reaction form. Images can be selected, dropped, or pasted and then resized and aligned. Select **Save** to persist the document and collection metadata to SQLite. Existing Markdown collections open as a compatible text block and are converted to the document format when saved.
 
+Reaction **Summary** and **Notes**, plus each Drug **Description**, use a versioned mixed-content document with paragraphs, hierarchical lists, and managed images. Hierarchy markers are `i)`, `①`, `a)`, then `•`; second-level items after 20 use `(21)`, `(22)`, and so on. Enter adds a sibling, Tab/Shift+Tab changes depth, Backspace removes an empty item, and Up/Down moves between items. Existing plain or rich-text content is converted lazily when first edited, while searchable plain text remains in the original fields. Notes images continue to use managed media IDs and retain their width, alignment, and hierarchy anchor metadata.
+
 ## Drug database
 
 The **Drug Database** starts empty. Every Drug has a stable human-readable code such as `Drug3`; its internal SQLite primary key remains separate. Codes survive re-import and reordering, and automatically allocated codes are never reused after deletion. The sidebar is a collapsible Chapter → Drug tree; a drug assigned to multiple chapters appears under each one while retaining its stable Drug-number ordering. Chapter and function filters continue to apply to the tree.
@@ -129,6 +131,10 @@ Bulk import accepts a JSON array, or an object containing a `drugs` array. Creat
 ```
 
 `number` is optional for new records; omitting it allocates the next stable Drug code. A slug re-import keeps its original number. Omitting `reaction_codes` preserves existing Drug–Reaction links, an explicit `"reaction_codes": []` clears them, and a non-empty list replaces them in the given order. Missing reaction codes produce warnings while valid references are applied. Existing `structure_codes` preservation behavior is unchanged. When `image_directory` is omitted, it defaults to `drug-images/<slug>/`; a missing directory is created and reported as having no images. For safety, imports can only read image directories contained within the project's `drug-images/` directory. See `drug-images/README.md` for the same format near the source folders.
+
+The 24 curated Drug structure images come from Wikimedia Commons. Run `python3 scripts/sync_wikimedia_drug_images.py` to verify the curated source files, download a 1600 px PNG rendering of each preferred SVG into the ignored `drug-images/<slug>/` folders, and regenerate the tracked provenance file at `data/drug-image-sources.json`. The download does not change SQLite; use the normal Drug import/sync afterward to copy those files into managed `data/media/`. The manifest records source URLs, authorship, license, checksums, and form discrepancies such as a free-base diagram for an HCl-labelled record.
+
+The schema upgrade for hierarchical Drug descriptions is additive: startup adds one nullable `drugs.description_document` text column. Existing rows, stable numbers, and relationships are not rewritten, and no destructive migration or reseed is required.
 
 The relationship API uses the same association model:
 

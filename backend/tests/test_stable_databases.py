@@ -299,6 +299,59 @@ class StableDatabaseTest(unittest.TestCase):
         with self.assertRaisesRegex(HTTPException, "reaction rich text"):
             media.delete_media(asset.id, self.db)
 
+    def test_28_hierarchical_documents_preserve_plain_text_and_relationships(self):
+        _, drug = self.import_drug(description="Legacy searchable description", reaction_codes=["Rxn4"])
+        document = json.dumps({
+            "version": 1,
+            "blocks": [{
+                "id": "list", "type": "hierarchy",
+                "items": [{"id": "one", "text": "개요", "children": [{"id": "two", "text": "세부"}]}],
+            }],
+        }, ensure_ascii=False)
+        updated = drugs.update_description(
+            drug.id,
+            schemas.DrugDescriptionUpdate(
+                description="개요\n세부", description_document=document,
+            ),
+            self.db,
+        )
+        self.assertEqual(updated.description, "개요\n세부")
+        self.assertEqual(json.loads(updated.description_document)["version"], 1)
+        self.assertEqual([link.reaction.display_code for link in updated.reaction_links], ["Rxn4"])
+        reaction = crud.get_reaction(self.db, updated.reaction_links[0].reaction_id)
+        crud.save_reaction_rich_text(reaction, {
+            "summary_document": document, "notes_document": document,
+        })
+        self.db.commit()
+        saved = crud.get_reaction(self.db, reaction.id)
+        self.assertEqual(json.loads(saved.rich_text["notes_document"])["blocks"][0]["type"], "hierarchy")
+
+    def test_29_media_delete_refuses_drug_description_reference(self):
+        _, drug = self.import_drug()
+        asset = models.MediaAsset(
+            id="abcdefab-1234-4234-8234-123456789abc",
+            original_filename="description.png", stored_filename="description.png",
+            mime_type="image/png", size_bytes=10, width=10, height=10,
+        )
+        drug.description_document = json.dumps({
+            "version": 1,
+            "blocks": [{"id": "image", "type": "image", "media_asset_id": asset.id,
+                        "content_url": f"/api/media/{asset.id}/content"}],
+        })
+        self.db.add(asset); self.db.commit()
+        with self.assertRaisesRegex(HTTPException, "drug description"):
+            media.delete_media(asset.id, self.db)
+
+    def test_30_wikimedia_manifest_covers_every_stable_drug_code(self):
+        manifest = json.loads((PROJECT_ROOT / "data" / "drug-image-sources.json").read_text())
+        images = manifest["images"]
+        self.assertEqual([item["drug_code"] for item in images], [f"Drug{i}" for i in range(1, 25)])
+        self.assertEqual(len({item["slug"] for item in images}), 24)
+        self.assertTrue(all(item["original_format"] == "image/svg+xml" for item in images))
+        self.assertTrue(all(item["wikipedia_article_url"].startswith("https://en.wikipedia.org/wiki/") for item in images))
+        self.assertTrue(all(item["commons_page_url"].startswith("https://commons.wikimedia.org/") for item in images))
+        self.assertTrue(all(len(item["local_sha256"]) == 64 for item in images))
+
 
 class SchemaUpgradeTest(unittest.TestCase):
     def test_15_old_drug_rows_are_backfilled_without_data_loss(self):
@@ -320,7 +373,9 @@ class SchemaUpgradeTest(unittest.TestCase):
         upgrade_schema(engine)
         with engine.connect() as connection:
             rows = connection.execute(text("SELECT id, name, number FROM drugs ORDER BY number")).all()
+            columns = {row[1] for row in connection.execute(text("PRAGMA table_info(drugs)"))}
         self.assertEqual(rows, [(3, "Earlier", 1), (8, "Later", 2)])
+        self.assertIn("description_document", columns)
 
     def test_24_old_reaction_constraint_upgrade_preserves_foreign_keys(self):
         engine = create_engine("sqlite:///:memory:")

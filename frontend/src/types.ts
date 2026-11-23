@@ -139,6 +139,7 @@ export interface Drug {
   name: string
   slug: string
   description: string | null
+  description_document: string | null
   chapters: string[]
   functions: string[]
   aliases: string[]
@@ -261,6 +262,12 @@ export interface ReactionRichTextInput {
 }
 
 export interface RichTextValue { text: string; html?: string }
+export interface StudyItem { id: string; text: string; html?: string; children?: StudyItem[] }
+export type StudyBlock =
+  | { id: string; type: 'text'; content: RichTextValue }
+  | { id: string; type: 'hierarchy'; items: StudyItem[] }
+  | { id: string; type: 'image'; media_asset_id: string; width_percent: number; align: 'left' | 'center' | 'right'; anchor_item_id?: string; anchor_side?: 'before' | 'after' }
+export interface StudyDocument { version: 1; blocks: StudyBlock[] }
 export type CollectionBlock =
   | { id: string; type: 'heading'; level: 1 | 2 | 3; content: RichTextValue }
   | { id: string; type: 'text'; content: RichTextValue }

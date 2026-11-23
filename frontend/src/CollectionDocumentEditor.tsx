@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react'
 import { api } from './api'
 import { useLatex } from './latex'
 import type { CollectionBlock, CollectionDocument, Reaction, RichTextValue } from './types'
@@ -56,7 +56,7 @@ export function CollectionDocumentEditor({ document, reactions, onChange, onOpen
   </div>
 }
 
-export function RichEditor({ value, heading, singleLine = false, placeholder, allowImages = false, onChange }: { value: RichTextValue; heading?: 1 | 2 | 3; singleLine?: boolean; placeholder?: string; allowImages?: boolean; onChange: (value: RichTextValue) => void }) {
+export function RichEditor({ value, heading, singleLine = false, placeholder, allowImages = false, compact = false, editorId, onEditorFocus, onEditorKeyDown, onChange }: { value: RichTextValue; heading?: 1 | 2 | 3; singleLine?: boolean; placeholder?: string; allowImages?: boolean; compact?: boolean; editorId?: string; onEditorFocus?: () => void; onEditorKeyDown?: (event: KeyboardEvent<HTMLDivElement>, value: RichTextValue) => void; onChange: (value: RichTextValue) => void }) {
   const editor = useRef<HTMLDivElement>(null)
   const imageInput = useRef<HTMLInputElement>(null)
   const savedRange = useRef<Range | null>(null)
@@ -80,13 +80,20 @@ export function RichEditor({ value, heading, singleLine = false, placeholder, al
     if (editor.current.innerHTML !== desired) { editor.current.innerHTML = desired; setSelectedImage(null) }
     lastEmittedHtml.current = desired
   }, [value.html, value.text])
+  const readValue = () => {
+    if (!editor.current) return
+    const html = sanitizeRichHtml(editor.current.innerHTML)
+    const innerText = editor.current.innerText
+    const text = innerText.trim() || !editor.current.textContent?.trim() ? innerText : editor.current.textContent
+    return { text, html }
+  }
   const emit = (includeEnd = false) => {
     if (!editor.current) return
     normalizeTextNodes(editor.current, shortcuts, includeEnd)
     normalizeScriptNodes(editor.current, includeEnd)
-    const html = sanitizeRichHtml(editor.current.innerHTML)
-    const innerText = editor.current.innerText
-    const text = innerText.trim() || !editor.current.textContent?.trim() ? innerText : editor.current.textContent
+    const value = readValue()
+    if (!value) return
+    const { text, html } = value
     lastEmittedHtml.current = html
     onChange({ text, html })
   }
@@ -157,12 +164,20 @@ export function RichEditor({ value, heading, singleLine = false, placeholder, al
   }
   const imageWidth = Number(selectedImage?.dataset.widthPercent) || 55
   const imageAlign = selectedImage?.dataset.align === 'left' || selectedImage?.dataset.align === 'right' ? selectedImage.dataset.align : 'center'
-  return <div className={`rich-editor ${heading ? `heading-${heading}` : ''} ${singleLine ? 'single-line' : ''}`}>
-    <div className="rich-toolbar"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('bold')}><b>B</b></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('italic')}><i>I</i></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('underline')}><u>U</u></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')}>Highlight</button><span title="Text color"><input aria-label="Text color" type="color" onChange={(e) => command('foreColor', e.target.value)} /></span>{allowImages && <button type="button" disabled={uploadingImage} onMouseDown={(e) => { e.preventDefault(); rememberSelection() }} onClick={() => imageInput.current?.click()}>{uploadingImage ? 'Uploading…' : 'Image'}</button>}</div>
+  return <div className={`rich-editor ${heading ? `heading-${heading}` : ''} ${singleLine ? 'single-line' : ''} ${compact ? 'compact-editor' : ''}`}>
+    <div className="rich-toolbar"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('bold')}><b>B</b></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('italic')}><i>I</i></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('underline')}><u>U</u></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('superscript')}>x<sup>2</sup></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('subscript')}>x<sub>2</sub></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')}>Highlight</button><span title="Text color"><input aria-label="Text color" type="color" onChange={(e) => command('foreColor', e.target.value)} /></span>{allowImages && <button type="button" disabled={uploadingImage} onMouseDown={(e) => { e.preventDefault(); rememberSelection() }} onClick={() => imageInput.current?.click()}>{uploadingImage ? 'Uploading…' : 'Image'}</button>}</div>
     {allowImages && <input ref={imageInput} hidden type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={(event) => void uploadImage(event.target.files?.[0])} />}
     {selectedImage && <div className="rich-image-controls"><label>Width <input aria-label="Image width" type="range" min="15" max="100" value={imageWidth} onChange={(event) => updateImage(Number(event.target.value), imageAlign)} /></label><span>{imageWidth}%</span>{(['left', 'center', 'right'] as const).map((align) => <button type="button" className={imageAlign === align ? 'active' : ''} key={align} aria-label={`Align image ${align}`} onMouseDown={(event) => event.preventDefault()} onClick={() => updateImage(imageWidth, align)}>{align}</button>)}<button type="button" onMouseDown={(event) => event.preventDefault()} onClick={removeImage}>Remove</button></div>}
     {imageError && <small className="rich-image-error">{imageError}</small>}
-    <div ref={editor} contentEditable suppressContentEditableWarning data-placeholder={placeholder ?? (heading ? `Heading ${heading}` : 'Write something…')} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onClick={selectImage} onPaste={pasteImage} onDragOver={(event) => { if (allowImages && [...event.dataTransfer.items].some((item) => item.type.startsWith('image/'))) event.preventDefault() }} onDrop={dropImage} onCompositionStart={() => { composing.current = true; finishingComposition.current = false }} onCompositionEnd={() => { composing.current = false; finishingComposition.current = true; requestAnimationFrame(() => { finishingComposition.current = false; emit() }) }} onInput={() => { if (!composing.current && !finishingComposition.current) emit() }} onBlur={() => { finishingComposition.current = false; emit(true) }} onKeyDown={(event) => { if (singleLine && event.key === 'Enter') { event.preventDefault(); emit(true) } }} />
+    <div ref={editor} contentEditable role="textbox" aria-label={placeholder ?? (heading ? `Heading ${heading}` : 'Rich text')} suppressContentEditableWarning data-editor-id={editorId} data-placeholder={placeholder ?? (heading ? `Heading ${heading}` : 'Write something…')} onFocus={onEditorFocus} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onClick={selectImage} onPaste={pasteImage} onDragOver={(event) => { if (allowImages && [...event.dataTransfer.items].some((item) => item.type.startsWith('image/'))) event.preventDefault() }} onDrop={dropImage} onCompositionStart={() => { composing.current = true; finishingComposition.current = false }} onCompositionEnd={() => { composing.current = false; finishingComposition.current = true; requestAnimationFrame(() => { finishingComposition.current = false; emit() }) }} onInput={() => { if (!composing.current && !finishingComposition.current) emit() }} onBlur={() => { finishingComposition.current = false; emit(true) }} onKeyDown={(event) => {
+      if (event.nativeEvent.isComposing || composing.current) return
+      if (onEditorKeyDown) {
+        if (event.key === 'Enter' || event.key === 'Tab') emit(true)
+        const current = readValue(); if (current) onEditorKeyDown(event, current)
+        if (event.defaultPrevented) return
+      }
+      if (singleLine && event.key === 'Enter') { event.preventDefault(); emit(true) }
+    }} />
   </div>
 }
 

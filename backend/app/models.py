@@ -272,6 +272,7 @@ class Drug(Base):
     name: Mapped[str] = mapped_column(String(255), index=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text)
+    description_document: Mapped[str | None] = mapped_column(Text)
     chapters_json: Mapped[str] = mapped_column(Text, default="[]")
     functions_json: Mapped[str] = mapped_column(Text, default="[]")
     aliases_json: Mapped[str] = mapped_column(Text, default="[]")

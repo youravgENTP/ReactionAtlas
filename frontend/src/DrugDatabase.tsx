@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
+import { HierarchicalDocumentEditor } from './HierarchicalDocumentEditor'
 import { RichFormattedText } from './inlineMarkup'
-import type { Drug, DrugImportInput, DrugImportResult, Reaction } from './types'
+import { parseStudyDocument, serializeStudyDocument, studyDocumentText } from './studyDocument'
+import type { Drug, DrugImportInput, DrugImportResult, Reaction, StudyDocument } from './types'
 
 const sidebarPreferenceKey = 'reactionAtlas.drugs.sidebarCollapsed'
 const chapterCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
@@ -106,7 +108,13 @@ function DrugDetail({ drug, onChange, onOpenReaction, onOpenStructure }: { drug:
   const [candidates, setCandidates] = useState<Reaction[]>([])
   const [mappingError, setMappingError] = useState('')
   const [busy, setBusy] = useState(false)
+  const originalDescriptionDocument = useMemo(() => parseStudyDocument(drug.description_document, { text: drug.description ?? '' }), [drug.id, drug.updated_at, drug.description_document, drug.description])
+  const [descriptionDocument, setDescriptionDocument] = useState<StudyDocument>(originalDescriptionDocument)
+  const [descriptionSaving, setDescriptionSaving] = useState(false)
+  const [descriptionError, setDescriptionError] = useState('')
+  const descriptionDirty = serializeStudyDocument(descriptionDocument) !== serializeStudyDocument(originalDescriptionDocument)
   useEffect(() => { setLinking(false); setReactionSearch(''); setCandidates([]); setMappingError('') }, [drug.id])
+  useEffect(() => { setDescriptionDocument(originalDescriptionDocument); setDescriptionError('') }, [originalDescriptionDocument])
   useEffect(() => {
     if (!linking) return
     const timer = window.setTimeout(async () => {
@@ -129,9 +137,15 @@ function DrugDetail({ drug, onChange, onOpenReaction, onOpenStructure }: { drug:
     const ids = drug.reaction_links.map((link) => link.reaction.id); [ids[index], ids[target]] = [ids[target], ids[index]]
     void mutate(() => api.reorderDrugReactions(drug.id, ids))
   }
+  const saveDescription = async () => {
+    setDescriptionSaving(true); setDescriptionError('')
+    try { onChange(await api.updateDrugDescription(drug.id, studyDocumentText(descriptionDocument) || null, serializeStudyDocument(descriptionDocument))) }
+    catch (cause) { setDescriptionError(cause instanceof Error ? cause.message : 'Could not save description') }
+    finally { setDescriptionSaving(false) }
+  }
   return <article className="drug-record"><span className="eyebrow">Drug record · {drug.display_code}</span><h1>{drug.name}</h1>{drug.aliases.length > 0 && <p className="drug-aliases">Also known as {drug.aliases.join(', ')}</p>}
     <div className="drug-tags">{drug.chapters.map((item) => <span className="chapter" key={`chapter-${item}`}>{item}</span>)}{drug.functions.map((item) => <span key={`function-${item}`}>{item}</span>)}</div>
-    {drug.description && <p className="drug-description">{drug.description}</p>}
+    <section className="drug-description-editor"><h2>Description</h2><HierarchicalDocumentEditor placeholder="Add a drug description…" document={descriptionDocument} onChange={setDescriptionDocument} />{descriptionError && <div className="error mapping-error">{descriptionError}</div>}{descriptionDirty && <div className="inline-save-bar drug-description-save"><span>Unsaved description changes</span><button type="button" className="secondary" disabled={descriptionSaving} onClick={() => setDescriptionDocument(originalDescriptionDocument)}>Discard</button><button type="button" disabled={descriptionSaving} onClick={() => void saveDescription()}>{descriptionSaving ? 'Saving…' : 'Save description'}</button></div>}</section>
     {drug.image_links.length > 0 && <section><h2>Images</h2><div className="drug-gallery">{drug.image_links.map((image) => <figure key={image.id}><img src={image.asset.content_url} alt={`${drug.name} — ${image.asset.original_filename}`} /><figcaption>{image.asset.original_filename}</figcaption></figure>)}</div></section>}
     <section><div className="section-heading mapping-heading"><h2>Synthesis reactions</h2><button type="button" className="secondary" onClick={() => setLinking((current) => !current)}>{linking ? 'Close' : '+ Link reaction'}</button></div>
       {linking && <div className="reaction-link-picker"><input autoFocus aria-label="Search reactions to link" placeholder="Search Rxn code, name, or class…" value={reactionSearch} onChange={(event) => setReactionSearch(event.target.value)} />{available.length ? <div className="reaction-link-results">{available.map((reaction) => <button type="button" disabled={busy} key={reaction.id} onClick={() => void mutate(() => api.linkDrugReaction(drug.id, reaction.id))}><small>{reaction.display_code}</small><span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><em><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></em></span><b>Link</b></button>)}</div> : <p className="muted compact">No unlinked reactions match.</p>}</div>}

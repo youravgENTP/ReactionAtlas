@@ -18,6 +18,8 @@ def upgrade_schema(engine: Engine) -> None:
     with engine.begin() as connection:
         if "number" not in columns:
             connection.execute(text("ALTER TABLE drugs ADD COLUMN number INTEGER"))
+        if "description_document" not in columns:
+            connection.execute(text("ALTER TABLE drugs ADD COLUMN description_document TEXT"))
         order = "created_at, id" if "created_at" in columns else "id"
         rows = connection.execute(text(f"SELECT id, number FROM drugs ORDER BY {order}")).all()
         used = {number for _, number in rows if number is not None}

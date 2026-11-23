@@ -189,6 +189,11 @@ class DrugReactionAdd(BaseModel):
     reaction_id: int
 
 
+class DrugDescriptionUpdate(BaseModel):
+    description: str | None = None
+    description_document: str | None = None
+
+
 class ImportResult(BaseModel):
     created: int
     updated: int
@@ -272,6 +277,7 @@ class DrugRead(BaseModel):
     name: str
     slug: str
     description: str | None
+    description_document: str | None
     chapters: list[str]
     functions: list[str]
     aliases: list[str]

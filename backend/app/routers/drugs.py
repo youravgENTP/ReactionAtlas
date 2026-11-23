@@ -74,6 +74,15 @@ def read_drug(drug_id: int, db: Session = Depends(get_db)):
     return get_drug(db, drug_id)
 
 
+@router.patch("/{drug_id}/description", response_model=schemas.DrugRead)
+def update_description(drug_id: int, data: schemas.DrugDescriptionUpdate, db: Session = Depends(get_db)):
+    drug = get_drug(db, drug_id)
+    drug.description = data.description
+    drug.description_document = data.description_document
+    db.commit()
+    return get_drug(db, drug_id)
+
+
 @router.post("/{drug_id}/reactions", response_model=schemas.DrugRead, status_code=201)
 def add_reaction(drug_id: int, data: schemas.DrugReactionAdd, db: Session = Depends(get_db)):
     drug = get_drug(db, drug_id)
