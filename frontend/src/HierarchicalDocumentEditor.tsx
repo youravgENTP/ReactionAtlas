@@ -1,35 +1,56 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MutableRefObject } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import { api } from './api'
-import { RichEditor } from './CollectionDocumentEditor'
+import { normalizeScriptNodes, normalizeTextNodes } from './CollectionDocumentEditor'
+import { useLatex } from './latex'
+import { formatScriptHtml, sanitizeRichHtml } from './richText'
 import type { RichTextValue, StudyBlock, StudyDocument, StudyItem } from './types'
 import { addStudyItemAfter, flattenStudyItems, hierarchyMarker, indentStudyItem, newStudyItem, nextStudyItemId, outdentStudyItem, previousStudyItemId, removeStudyItem, updateStudyItem } from './hierarchy'
 import { newHierarchyBlock, newTextBlock } from './studyDocument'
 
 type ActivePosition = { blockId: string; itemId?: string }
+type ImageBlock = Extract<StudyBlock, { type: 'image' }>
 
 export function HierarchicalDocumentEditor({ document, placeholder, onChange }: { document: StudyDocument; placeholder?: string; onChange: (document: StudyDocument) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const focusNext = useRef<string | undefined>(undefined)
   const [active, setActive] = useState<ActivePosition | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
   const blocks = document.blocks.length ? document.blocks : [newTextBlock()]
   const commit = (next: StudyBlock[]) => onChange({ version: 1, blocks: next })
+
   useEffect(() => {
     if (!focusNext.current) return
-    const editor = window.document.querySelector<HTMLElement>(`[data-editor-id="${focusNext.current}"]`)
+    const editor = window.document.querySelector<HTMLElement>(`[data-study-item="${focusNext.current}"]`)
     if (editor) { editor.focus(); placeCaretAtEnd(editor) }
     focusNext.current = undefined
   }, [document])
+
   const updateBlock = (id: string, next: StudyBlock) => commit(blocks.map((block) => block.id === id ? next : block))
+  const anchorImage = (imageId: string, itemId: string, side: 'before' | 'after') => commit(blocks.map((block) => block.id === imageId && block.type === 'image' ? { ...block, anchor_item_id: itemId, anchor_side: side } : block))
+  const updateHierarchy = (id: string, items: StudyItem[]) => {
+    const current = blocks.find((block) => block.id === id)
+    const remaining = new Set(flattenStudyItems(items).map((item) => item.id))
+    const removed = new Set(current?.type === 'hierarchy' ? flattenStudyItems(current.items).filter((item) => !remaining.has(item.id)).map((item) => item.id) : [])
+    commit(blocks
+      .filter((block) => block.type !== 'image' || !block.anchor_item_id || !removed.has(block.anchor_item_id))
+      .map((block) => block.id === id && block.type === 'hierarchy' ? { ...block, items } : block))
+  }
   const insertBlock = (block: StudyBlock) => {
     const index = active ? blocks.findIndex((item) => item.id === active.blockId) : blocks.length - 1
     const next = [...blocks]; next.splice(Math.max(0, index + 1), 0, block); commit(next)
   }
   const moveBlock = (id: string, amount: number) => {
-    const index = blocks.findIndex((block) => block.id === id); const target = index + amount
-    if (index < 0 || target < 0 || target >= blocks.length) return
-    const next = [...blocks]; [next[index], next[target]] = [next[target], next[index]]; commit(next)
+    const flow = blocks.filter((block) => block.type !== 'image' || !block.anchor_item_id)
+    const flowIndex = flow.findIndex((block) => block.id === id); const target = flowIndex + amount
+    if (flowIndex < 0 || target < 0 || target >= flow.length) return
+    const index = blocks.findIndex((block) => block.id === id); const targetIndex = blocks.findIndex((block) => block.id === flow[target].id)
+    const next = [...blocks]; [next[index], next[targetIndex]] = [next[targetIndex], next[index]]; commit(next)
+  }
+  const removeBlock = (block: StudyBlock) => {
+    const itemIds = block.type === 'hierarchy' ? new Set(flattenStudyItems(block.items).map((item) => item.id)) : new Set<string>()
+    commit(blocks.filter((candidate) => candidate.id !== block.id && (candidate.type !== 'image' || !candidate.anchor_item_id || !itemIds.has(candidate.anchor_item_id))))
   }
   const upload = async (file?: File, position = active) => {
     if (!file || !file.type.startsWith('image/')) return
@@ -50,36 +71,40 @@ export function HierarchicalDocumentEditor({ document, placeholder, onChange }: 
   const dropImage = (event: DragEvent<HTMLDivElement>) => {
     const file = [...event.dataTransfer.files].find((item) => item.type.startsWith('image/'))
     if (!file) return
-    event.preventDefault()
-    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-editor-id]')
-    const itemId = target?.dataset.editorId
+    event.preventDefault(); setDragging(false)
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-study-item]')
+    const itemId = target?.dataset.studyItem
     const hierarchy = itemId ? blocks.find((block) => block.type === 'hierarchy' && flattenStudyItems(block.items).some((item) => item.id === itemId)) : undefined
     void upload(file, hierarchy ? { blockId: hierarchy.id, itemId } : active)
   }
-  return <div className="study-document-editor" onPaste={pasteImage} onDragOver={(event) => { if ([...event.dataTransfer.items].some((item) => item.type.startsWith('image/'))) event.preventDefault() }} onDrop={dropImage}>
-    <div className="study-document-toolbar"><span>Insert</span><button type="button" onClick={() => insertBlock(newTextBlock())}>Paragraph</button><button type="button" onClick={() => insertBlock(newHierarchyBlock())}>Hierarchical list</button><button type="button" disabled={uploading} onClick={() => input.current?.click()}>{uploading ? 'Uploading…' : 'Image'}</button><input ref={input} hidden type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={(event) => void upload(event.target.files?.[0])} /></div>
+
+  const images = blocks.filter((block): block is ImageBlock => block.type === 'image')
+  const flowIds = blocks.filter((block) => block.type !== 'image' || !block.anchor_item_id).map((block) => block.id)
+  return <div className={`study-document-editor ${dragging ? 'dragging' : ''}`} onPaste={pasteImage} onDragOver={(event) => { if ([...event.dataTransfer.items].some((item) => item.type.startsWith('image/'))) { event.preventDefault(); setDragging(true) } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false) }} onDrop={dropImage}>
     <div className="study-document-canvas">
-      {blocks.map((block, index) => {
+      {blocks.map((block) => {
         if (block.type === 'image' && block.anchor_item_id) return null
-        return <div className={`study-block ${block.type}`} key={block.id} onFocusCapture={() => setActive({ blockId: block.id })}>
-          <BlockControls first={index === 0} last={index === blocks.length - 1} onUp={() => moveBlock(block.id, -1)} onDown={() => moveBlock(block.id, 1)} onRemove={() => commit(blocks.filter((item) => item.id !== block.id))} />
-          {block.type === 'text' && <RichEditor placeholder={placeholder ?? 'Write a paragraph…'} value={block.content} onChange={(content) => updateBlock(block.id, { ...block, content })} />}
-          {block.type === 'hierarchy' && <HierarchyItems block={block} images={blocks.filter((item): item is Extract<StudyBlock, { type: 'image' }> => item.type === 'image')} onActive={(itemId) => setActive({ blockId: block.id, itemId })} onChange={(items) => updateBlock(block.id, { ...block, items })} onImageChange={(image) => updateBlock(image.id, image)} onImageRemove={(id) => commit(blocks.filter((item) => item.id !== id))} focusNext={focusNext} />}
-          {block.type === 'image' && <StudyImage block={block} onChange={(image) => updateBlock(block.id, image)} onRemove={() => commit(blocks.filter((item) => item.id !== block.id))} />}
+        return <div className={`study-flow-block ${block.type}`} key={block.id} onFocusCapture={() => setActive({ blockId: block.id })}>
+          {block.type !== 'image' && <BlockControls first={flowIds.indexOf(block.id) === 0} last={flowIds.indexOf(block.id) === flowIds.length - 1} onUp={() => moveBlock(block.id, -1)} onDown={() => moveBlock(block.id, 1)} onRemove={() => removeBlock(block)} />}
+          {block.type === 'text' && <StudyRichInput multiline placeholder={placeholder ?? 'Write a paragraph…'} value={block.content} onFocus={() => setActive({ blockId: block.id })} onChange={(content) => updateBlock(block.id, { ...block, content })} />}
+          {block.type === 'hierarchy' && <HierarchyItems block={block} images={images} onActive={(itemId) => setActive({ blockId: block.id, itemId })} onChange={(items) => updateHierarchy(block.id, items)} onImageAnchor={anchorImage} onImageChange={(image) => updateBlock(image.id, image)} onImageRemove={(id) => commit(blocks.filter((item) => item.id !== id))} focusNext={focusNext} />}
+          {block.type === 'image' && <StudyImage block={block} onChange={(image) => updateBlock(block.id, image)} onRemove={() => removeBlock(block)} />}
         </div>
       })}
     </div>
+    <div className="study-insert-row"><span>Insert</span><button type="button" onClick={() => insertBlock(newTextBlock())}>Paragraph</button><button type="button" onClick={() => insertBlock(newHierarchyBlock())}>Hierarchy</button><button type="button" disabled={uploading} onClick={() => input.current?.click()}>{uploading ? 'Uploading…' : 'Image'}</button><small>or paste/drop an image</small><input ref={input} hidden type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={(event) => void upload(event.target.files?.[0])} /></div>
+    {dragging && <div className="study-image-drop-overlay">Drop image to insert</div>}
     {error && <small className="rich-image-error">{error}</small>}
   </div>
 }
 
-function HierarchyItems({ block, images, onActive, onChange, onImageChange, onImageRemove, focusNext }: { block: Extract<StudyBlock, { type: 'hierarchy' }>; images: Extract<StudyBlock, { type: 'image' }>[]; onActive: (id: string) => void; onChange: (items: StudyItem[]) => void; onImageChange: (image: Extract<StudyBlock, { type: 'image' }>) => void; onImageRemove: (id: string) => void; focusNext: MutableRefObject<string | undefined> }) {
+function HierarchyItems({ block, images, onActive, onChange, onImageAnchor, onImageChange, onImageRemove, focusNext }: { block: Extract<StudyBlock, { type: 'hierarchy' }>; images: ImageBlock[]; onActive: (id: string) => void; onChange: (items: StudyItem[]) => void; onImageAnchor: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange: (image: ImageBlock) => void; onImageRemove: (id: string) => void; focusNext: MutableRefObject<string | undefined> }) {
   const keyAction = (event: KeyboardEvent<HTMLDivElement>, id: string, content: RichTextValue) => {
     const source = updateStudyItem(block.items, id, content)
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       const targetId = event.key === 'ArrowUp' ? previousStudyItemId(source, id) : nextStudyItemId(source, id)
       if (!targetId) return
-      event.preventDefault(); const offset = caretOffset(event.currentTarget); const target = window.document.querySelector<HTMLElement>(`[data-editor-id="${targetId}"]`); target?.focus({ preventScroll: true }); if (target) placeCaretAtOffset(target, offset); return
+      event.preventDefault(); const offset = caretOffset(event.currentTarget); const target = window.document.querySelector<HTMLElement>(`[data-study-item="${targetId}"]`); target?.focus({ preventScroll: true }); if (target) placeCaretAtOffset(target, offset); return
     }
     if (event.key === 'Tab') { event.preventDefault(); onChange(event.shiftKey ? outdentStudyItem(source, id) : indentStudyItem(source, id)); return }
     if (event.key === 'Enter') { event.preventDefault(); const item = newStudyItem(); focusNext.current = item.id; onChange(addStudyItemAfter(source, id, item)); return }
@@ -88,25 +113,82 @@ function HierarchyItems({ block, images, onActive, onChange, onImageChange, onIm
       event.preventDefault(); focusNext.current = previous; onChange(removeStudyItem(source, id))
     }
   }
-  return <div className="hierarchy-editor"><HierarchyRows items={block.items} depth={0} images={images} onActive={onActive} onChange={(id, content) => onChange(updateStudyItem(block.items, id, content))} onKeyAction={keyAction} onImageChange={onImageChange} onImageRemove={onImageRemove} /></div>
+  return <div className="hierarchy-editor"><HierarchyRows items={block.items} depth={0} images={images} onActive={onActive} onChange={(id, content) => onChange(updateStudyItem(block.items, id, content))} onKeyAction={keyAction} onRemove={(id) => onChange(removeStudyItem(block.items, id))} onImageAnchor={onImageAnchor} onImageChange={onImageChange} onImageRemove={onImageRemove} /></div>
 }
 
-function HierarchyRows({ items, depth, images, onActive, onChange, onKeyAction, onImageChange, onImageRemove }: { items: StudyItem[]; depth: number; images: Extract<StudyBlock, { type: 'image' }>[]; onActive: (id: string) => void; onChange: (id: string, content: RichTextValue) => void; onKeyAction: (event: KeyboardEvent<HTMLDivElement>, id: string, content: RichTextValue) => void; onImageChange: (image: Extract<StudyBlock, { type: 'image' }>) => void; onImageRemove: (id: string) => void }) {
+function HierarchyRows({ items, depth, images, onActive, onChange, onKeyAction, onRemove, onImageAnchor, onImageChange, onImageRemove }: { items: StudyItem[]; depth: number; images: ImageBlock[]; onActive: (id: string) => void; onChange: (id: string, content: RichTextValue) => void; onKeyAction: (event: KeyboardEvent<HTMLDivElement>, id: string, content: RichTextValue) => void; onRemove: (id: string) => void; onImageAnchor: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange: (image: ImageBlock) => void; onImageRemove: (id: string) => void }) {
   return <>{items.map((item, index) => {
     const before = images.filter((image) => image.anchor_item_id === item.id && image.anchor_side === 'before')
     const after = images.filter((image) => image.anchor_item_id === item.id && image.anchor_side !== 'before')
-    return <div className="hierarchy-node" key={item.id}>{before.map((image) => <StudyImage key={image.id} block={image} onChange={onImageChange} onRemove={() => onImageRemove(image.id)} />)}<div className={`hierarchy-row depth-${Math.min(depth, 3)}`}><span className="hierarchy-marker">{hierarchyMarker(depth, index)}</span><RichEditor compact singleLine editorId={item.id} placeholder="List item…" value={{ text: item.text, html: item.html }} onEditorFocus={() => onActive(item.id)} onEditorKeyDown={(event, content) => onKeyAction(event, item.id, content)} onChange={(content) => onChange(item.id, content)} /></div>{after.map((image) => <StudyImage key={image.id} block={image} onChange={onImageChange} onRemove={() => onImageRemove(image.id)} />)}{item.children?.length ? <div className="hierarchy-children"><HierarchyRows items={item.children} depth={depth + 1} images={images} onActive={onActive} onChange={onChange} onKeyAction={onKeyAction} onImageChange={onImageChange} onImageRemove={onImageRemove} /></div> : null}</div>
+    const imageSlot = (side: 'before' | 'after') => ({
+      onDragOver: (event: DragEvent<HTMLDivElement>) => { if (!event.dataTransfer.types.includes('application/x-reactionatlas-study-image')) return; event.preventDefault(); event.stopPropagation(); window.document.querySelectorAll('.hierarchy-image-slot.active').forEach((slot) => slot.classList.remove('active')); event.currentTarget.classList.add('active') },
+      onDragLeave: (event: DragEvent<HTMLDivElement>) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.classList.remove('active') },
+      onDrop: (event: DragEvent<HTMLDivElement>) => { const imageId = event.dataTransfer.getData('application/x-reactionatlas-study-image'); if (!imageId) return; event.preventDefault(); event.stopPropagation(); event.currentTarget.classList.remove('active'); onImageAnchor(imageId, item.id, side) },
+    })
+    return <div className="hierarchy-node" key={item.id}>
+      <div className="hierarchy-image-slot" {...imageSlot('before')}>{before.map((image) => <StudyImage key={image.id} block={image} onChange={onImageChange} onRemove={() => onImageRemove(image.id)} />)}</div>
+      <div className={`hierarchy-row depth-${Math.min(depth, 3)}`}><span className="hierarchy-marker">{hierarchyMarker(depth, index)}</span><StudyRichInput editorId={item.id} placeholder="List item…" value={{ text: item.text, html: item.html }} onFocus={() => onActive(item.id)} onKeyAction={(event, content) => onKeyAction(event, item.id, content)} onRemove={() => onRemove(item.id)} onChange={(content) => onChange(item.id, content)} /></div>
+      <div className="hierarchy-image-slot" {...imageSlot('after')}>{after.map((image) => <StudyImage key={image.id} block={image} onChange={onImageChange} onRemove={() => onImageRemove(image.id)} />)}</div>
+      {item.children?.length ? <div className="hierarchy-children"><HierarchyRows items={item.children} depth={depth + 1} images={images} onActive={onActive} onChange={onChange} onKeyAction={onKeyAction} onRemove={onRemove} onImageAnchor={onImageAnchor} onImageChange={onImageChange} onImageRemove={onImageRemove} /></div> : null}
+    </div>
   })}</>
 }
 
-function StudyImage({ block, onChange, onRemove }: { block: Extract<StudyBlock, { type: 'image' }>; onChange: (block: Extract<StudyBlock, { type: 'image' }>) => void; onRemove: () => void }) {
-  return <figure className={`study-image ${block.align}`} style={{ width: `${block.width_percent}%` }}><img src={`/api/media/${block.media_asset_id}/content`} alt="Study content" /><figcaption><input aria-label="Image width" type="range" min="15" max="100" value={block.width_percent} onChange={(event) => onChange({ ...block, width_percent: Number(event.target.value) })} /><span>{(['left', 'center', 'right'] as const).map((align) => <button type="button" className={block.align === align ? 'active' : ''} key={align} onClick={() => onChange({ ...block, align })}>{align}</button>)}</span>{block.anchor_item_id && <button type="button" onClick={() => onChange({ ...block, anchor_side: block.anchor_side === 'before' ? 'after' : 'before' })}>{block.anchor_side === 'before' ? 'Move after' : 'Move before'}</button>}<button type="button" onClick={onRemove}>Remove</button></figcaption></figure>
+function StudyRichInput({ value, multiline = false, editorId, placeholder, onFocus, onKeyAction, onRemove, onChange }: { value: RichTextValue; multiline?: boolean; editorId?: string; placeholder: string; onFocus?: () => void; onKeyAction?: (event: KeyboardEvent<HTMLDivElement>, content: RichTextValue) => void; onRemove?: () => void; onChange: (value: RichTextValue) => void }) {
+  const editor = useRef<HTMLDivElement>(null)
+  const savedRange = useRef<Range | null>(null)
+  const composing = useRef(false)
+  const { shortcuts } = useLatex()
+  useEffect(() => {
+    const node = editor.current
+    if (!node || window.document.activeElement === node) return
+    const desired = value.html !== undefined ? sanitizeRichHtml(value.html) : formatScriptHtml(escapeHtml(value.text).replace(/\n/g, '<br>'))
+    if (node.innerHTML !== desired) node.innerHTML = desired
+  }, [value.html, value.text])
+  const content = (): RichTextValue => {
+    const node = editor.current!
+    const text = multiline ? node.innerText.replace(/\r\n?/g, '\n') : node.innerText.replace(/\n/g, '')
+    return { text, html: sanitizeRichHtml(node.innerHTML) }
+  }
+  const rememberSelection = () => { const selection = window.getSelection(); if (selection?.rangeCount && editor.current?.contains(selection.anchorNode)) savedRange.current = selection.getRangeAt(0).cloneRange() }
+  const emit = (includeEnd = false) => { const node = editor.current; if (!node) return; normalizeTextNodes(node, shortcuts, includeEnd); normalizeScriptNodes(node, includeEnd); const next = content(); rememberSelection(); onChange(next) }
+  const command = (name: string, commandValue?: string) => {
+    const node = editor.current; if (!node) return
+    node.focus({ preventScroll: true })
+    if (savedRange.current) { const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(savedRange.current) }
+    if (name === 'superscript' && window.document.queryCommandState('subscript')) window.document.execCommand('subscript')
+    if (name === 'subscript' && window.document.queryCommandState('superscript')) window.document.execCommand('superscript')
+    window.document.execCommand(name, false, commandValue); emit()
+  }
+  return <div className={`study-rich-input-wrap ${multiline ? 'multiline' : ''}`}>
+    <div ref={editor} className="study-rich-input" contentEditable role="textbox" aria-multiline={multiline} aria-label={placeholder} suppressContentEditableWarning data-study-item={editorId} data-placeholder={placeholder} onFocus={onFocus} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false; emit() }} onInput={() => { if (!composing.current) emit() }} onBlur={() => { composing.current = false; emit(true) }} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onKeyDown={(event) => {
+      if (event.nativeEvent.isComposing || composing.current) return
+      if ((event.metaKey || event.ctrlKey) && ['b', 'i', 'u'].includes(event.key.toLowerCase())) { event.preventDefault(); command({ b: 'bold', i: 'italic', u: 'underline' }[event.key.toLowerCase()]!); return }
+      if (onKeyAction && (event.key === 'Enter' || event.key === 'Tab')) emit(true)
+      if (onKeyAction) { onKeyAction(event, content()); if (event.defaultPrevented) return }
+    }} />
+    <div className="study-rich-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('bold')} title="Bold"><b>B</b></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('italic')} title="Italic"><i>I</i></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('underline')} title="Underline"><u>U</u></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('superscript')} title="Superscript">x<sup>2</sup></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('subscript')} title="Subscript">x<sub>2</sub></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')} title="Highlight">▰</button><label title="Text color">A<input aria-label="Text color" type="color" onMouseDown={rememberSelection} onChange={(event) => command('foreColor', event.target.value)} /></label>{onRemove && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onRemove} title="Remove item">×</button>}</div>
+  </div>
+}
+
+function StudyImage({ block, onChange, onRemove }: { block: ImageBlock; onChange: (block: ImageBlock) => void; onRemove: () => void }) {
+  const beginResize = (event: ReactPointerEvent<HTMLButtonElement>, side: 'left' | 'right') => {
+    event.preventDefault(); event.stopPropagation()
+    const figure = event.currentTarget.closest('figure'); const containerWidth = figure?.parentElement?.clientWidth || 1
+    const startX = event.clientX; const startWidth = block.width_percent
+    const calculate = (clientX: number) => Math.max(15, Math.min(100, startWidth + (clientX - startX) / containerWidth * 100 * (side === 'left' ? -1 : 1)))
+    const move = (pointer: PointerEvent) => { if (figure) figure.style.width = `${calculate(pointer.clientX)}%` }
+    const end = (pointer: PointerEvent) => { const width = Math.round(calculate(pointer.clientX)); onChange({ ...block, width_percent: width }); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end) }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', end, { once: true })
+  }
+  return <figure draggable className={`study-image ${block.align}`} style={{ width: `${block.width_percent}%` }} tabIndex={0} onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-reactionatlas-study-image', block.id) }}><img src={`/api/media/${block.media_asset_id}/content`} draggable={false} alt="Study content" />{(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((corner) => <button type="button" draggable={false} aria-label="Resize image" className={`study-image-resize ${corner}`} key={corner} onPointerDown={(event) => beginResize(event, corner.endsWith('left') ? 'left' : 'right')} />)}<div className="study-image-toolbar">{(['left', 'center', 'right'] as const).map((align) => <button type="button" draggable={false} className={block.align === align ? 'active' : ''} key={align} onClick={() => onChange({ ...block, align })} title={`Align ${align}`}>{align.at(0)?.toUpperCase()}</button>)}{block.anchor_item_id && <button type="button" draggable={false} onClick={() => onChange({ ...block, anchor_side: block.anchor_side === 'before' ? 'after' : 'before' })}>{block.anchor_side === 'before' ? 'After' : 'Before'}</button>}<button type="button" draggable={false} onClick={onRemove} title="Remove image">×</button></div></figure>
 }
 
 function BlockControls({ first, last, onUp, onDown, onRemove }: { first: boolean; last: boolean; onUp: () => void; onDown: () => void; onRemove: () => void }) {
   return <div className="study-block-controls"><button type="button" aria-label="Move block up" disabled={first} onClick={onUp}>↑</button><button type="button" aria-label="Move block down" disabled={last} onClick={onDown}>↓</button><button type="button" aria-label="Remove block" onClick={onRemove}>×</button></div>
 }
 
+function escapeHtml(value: string) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 function caretOffset(element: HTMLElement) { const selection = window.getSelection(); if (!selection?.rangeCount || !element.contains(selection.anchorNode)) return 0; const range = selection.getRangeAt(0).cloneRange(); range.selectNodeContents(element); range.setEnd(selection.anchorNode!, selection.anchorOffset); return range.toString().length }
 function placeCaretAtEnd(element: HTMLElement) { const range = window.document.createRange(); range.selectNodeContents(element); range.collapse(false); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range) }
-function placeCaretAtOffset(element: HTMLElement, offset: number) { const walker = window.document.createTreeWalker(element, NodeFilter.SHOW_TEXT); let remaining = offset; while (walker.nextNode()) { const node = walker.currentNode as Text; if (remaining <= node.length) { const range = window.document.createRange(); range.setStart(node, remaining); range.collapse(true); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range); return } remaining -= node.length } placeCaretAtEnd(element) }
+function placeCaretAtOffset(element: HTMLElement, offset: number) { const walker = window.document.createTreeWalker(element, NodeFilter.SHOW_TEXT); let remaining = offset; let last: Text | undefined; while (walker.nextNode()) { const node = walker.currentNode as Text; last = node; if (remaining <= node.length) { const range = window.document.createRange(); range.setStart(node, remaining); range.collapse(true); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range); return } remaining -= node.length } if (last) { const range = window.document.createRange(); range.setStart(last, last.length); range.collapse(true); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range); return } placeCaretAtEnd(element) }

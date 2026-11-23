@@ -202,7 +202,7 @@ function ReactionEmbed({ block, reactions, onChange, onOpenReaction }: { block: 
   return <div className="reaction-embed"><select value={block.reaction_id ?? ''} onChange={(e) => onChange({ ...block, reaction_id: Number(e.target.value) || null })}><option value="">Choose a reaction</option>{reactions.map((item) => <option value={item.id} key={item.id}>{item.display_code} — {item.name}</option>)}</select>{reaction && <button className="embedded-card" onClick={() => onOpenReaction(reaction.display_code)}>{reaction.image && <img src={reaction.image.content_url} alt="" />}<span><small>{reaction.display_code}</small><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><em><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></em></span></button>}</div>
 }
 
-function normalizeTextNodes(root: HTMLElement, shortcuts: import('./types').LatexShortcut[], includeEnd: boolean) {
+export function normalizeTextNodes(root: HTMLElement, shortcuts: import('./types').LatexShortcut[], includeEnd: boolean) {
   const selection = window.getSelection()
   const active = Boolean(selection?.rangeCount && selection.isCollapsed && root.contains(selection.anchorNode))
   const offset = active ? richCaretOffset(root) : 0
@@ -220,7 +220,7 @@ function normalizeTextNodes(root: HTMLElement, shortcuts: import('./types').Late
   if (active && delta) placeRichCaret(root, Math.max(0, offset + delta))
 }
 
-function normalizeScriptNodes(root: HTMLElement, includeEnd: boolean) {
+export function normalizeScriptNodes(root: HTMLElement, includeEnd: boolean) {
   const selection = window.getSelection()
   const active = Boolean(selection?.rangeCount && selection.isCollapsed && root.contains(selection.anchorNode))
   const caret = active ? richCaretOffset(root) : 0
