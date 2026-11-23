@@ -6,6 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from . import models, schemas
+from .stable_codes import parse_stable_code
 
 
 def normalize_name(value: str) -> str:
@@ -57,13 +58,15 @@ def list_reactions(db: Session, search: str | None = None, reaction_class: str |
     if search and search.strip():
         term = search.strip()
         pattern = f"%{term}%"
-        code_match = re.fullmatch(r"rxn\s*(\*)?\s*(\d+)", term, re.IGNORECASE)
         code_condition = models.Reaction.id < 0
-        if code_match:
+        try:
+            parsed_code = parse_stable_code(term, "reaction")
             code_condition = (
-                (models.Reaction.series == ("special" if code_match.group(1) else "general"))
-                & (models.Reaction.number == int(code_match.group(2)))
+                (models.Reaction.series == parsed_code.reaction_series)
+                & (models.Reaction.number == parsed_code.number)
             )
+        except ValueError:
+            pass
         query = (
             query.outerjoin(models.Reaction.aliases)
             .outerjoin(models.Reaction.components)

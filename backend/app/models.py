@@ -6,6 +6,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
 
+REACTION_SERIES_PREFIX = {
+    "general": "Rxn",
+    "special": "Rxn*",
+    "scaffold": "SRxn",
+}
+
+
 def now() -> datetime:
     return datetime.now()
 
@@ -14,7 +21,7 @@ class Reaction(Base):
     __tablename__ = "reactions"
     __table_args__ = (
         UniqueConstraint("series", "number", name="uq_reaction_series_number"),
-        CheckConstraint("series IN ('general', 'special')", name="ck_reaction_series"),
+        CheckConstraint("series IN ('general', 'special', 'scaffold')", name="ck_reaction_series"),
         CheckConstraint("status IN ('active', 'deprecated')", name="ck_reaction_status"),
         CheckConstraint("number > 0", name="ck_reaction_number_positive"),
     )
@@ -65,7 +72,7 @@ class Reaction(Base):
 
     @property
     def display_code(self) -> str:
-        return f"Rxn{'*' if self.series == 'special' else ''}{self.number}"
+        return f"{REACTION_SERIES_PREFIX[self.series]}{self.number}"
 
     @property
     def image(self):

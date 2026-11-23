@@ -14,7 +14,7 @@ The Structure Database importer recursively copies JPEG, PNG, GIF, and WebP imag
       "categories": ["Heterocycle"],
       "aliases": ["1,3-diazole"],
       "image_directory": "structure-images/imidazole",
-      "reaction_codes": ["Rxn4"],
+      "reaction_codes": ["Rxn4", "SRxn2"],
       "drug_codes": ["Drug3"]
     }
   ]

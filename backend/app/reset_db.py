@@ -22,6 +22,7 @@ def main() -> None:
     print("Loaded:")
     print(f"{counts['general']} general reactions")
     print(f"{counts['special']} special reactions")
+    print(f"{counts['scaffold']} scaffold-specific reactions")
     print(f"{counts['aliases']} alias")
     print(f"{counts['relations']} relations")
 

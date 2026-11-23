@@ -5,6 +5,7 @@ import { ReactionForm } from './ReactionForm'
 import type { Reaction, ReactionInput, ReactionRichTextInput, Role } from './types'
 import { useLatex } from './latex'
 import { FormattedText, RichFormattedText } from './inlineMarkup'
+import { reactionSeriesLabel } from './reactionSeries'
 
 function parseCsv(text: string): ReactionInput[] {
   const lines = text.trim().split(/\r?\n/)
@@ -14,7 +15,7 @@ function parseCsv(text: string): ReactionInput[] {
     const values = line.split(',').map((value) => value.trim())
     const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']))
     return {
-      series: row.series === 'special' ? 'special' : 'general', number: Number(row.number), name: row.name,
+      series: row.series === 'special' ? 'special' : row.series === 'scaffold' ? 'scaffold' : 'general', number: Number(row.number), name: row.name,
       slug: row.slug || null, summary: row.summary || null, reaction_class: row.reaction_class || null,
       status: row.status === 'deprecated' ? 'deprecated' : 'active', notes: row.notes || null,
       components: roles.flatMap(([column, role]) => (row[column] ?? '').split(';').filter(Boolean).map((name, index) => ({ name: name.trim(), role, display_order: index }))),
@@ -88,7 +89,7 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
     <div className="library-layout">
       <aside className="results-panel"><div className="panel-label">{reactions.length} {reactions.length === 1 ? 'reaction' : 'reactions'}</div>
         <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => setSelected(reaction)}>
-          {reaction.image && <img className="result-thumbnail" src={reaction.image.content_url} alt="" />}<span className="index-line"><span className={`series-label ${reaction.series}`}>{reaction.series}</span><span className="rxn-index">{reaction.display_code}</span></span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><small><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></small>
+          {reaction.image && <img className="result-thumbnail" src={reaction.image.content_url} alt="" />}<span className="index-line"><span className={`series-label ${reaction.series}`}>{reactionSeriesLabel[reaction.series]}</span><span className="rxn-index">{reaction.display_code}</span></span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><small><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></small>
           {search && <span className="component-hint">{reaction.aliases.filter((a) => a.alias.toLowerCase().includes(search.toLowerCase())).map((a) => `${a.alias} (${a.alias_type.replace('_', ' ')})`).concat(reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name)).join(' · ')}</span>}
         </button>)}</div>
       </aside>

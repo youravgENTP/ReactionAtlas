@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api } from './api'
 import type { Component, ComponentInput, Reaction, ReactionInput, ReactionSeries, ReactionStatus, Role } from './types'
 import { useLatex } from './latex'
+import { reactionDisplayCode } from './reactionSeries'
 
 const roles: Role[] = ['reactant', 'product', 'reagent', 'catalyst', 'solvent', 'condition', 'other']
 const empty: ReactionInput = { series: 'general', number: 1, name: '', slug: '', summary: '', reaction_class: '', status: 'active', notes: '', components: [], image_asset_id: null, rich_text: {} }
@@ -71,8 +72,8 @@ export function ReactionForm({ reaction, onSave, onClose }: Props) {
       <div className="modal-title"><div><span className="eyebrow">Reaction record</span><h2>{reaction ? 'Edit reaction' : 'New reaction'}</h2></div><button type="button" className="icon-button" onClick={onClose}>×</button></div>
       {error && <div className="error">{error}</div>}
       <div className="form-grid">
-        <label>Series<select value={form.series} onChange={(e) => field('series', e.target.value as ReactionSeries)}><option value="general">General</option><option value="special">Special</option></select></label>
-        <label>Number<input required min="1" type="number" value={form.number} onChange={(e) => field('number', Number(e.target.value))} /></label>
+        <label>Series<select value={form.series} onChange={(e) => field('series', e.target.value as ReactionSeries)}><option value="general">General</option><option value="special">Named reaction</option><option value="scaffold">Scaffold-specific</option></select></label>
+        <label>Number<input required min="1" type="number" value={form.number} onChange={(e) => field('number', Number(e.target.value))} /><small className="code-preview">{reactionDisplayCode(form.series, form.number || 0)}</small></label>
         <label>Reaction name<input required placeholder="Reaction name" value={form.name} onBlur={(e) => plainTextChange('name', e.target.value, true)} onChange={(e) => plainTextChange('name', e.target.value)} /></label>
         <label>Status<select value={form.status} onChange={(e) => field('status', e.target.value as ReactionStatus)}><option value="active">Active</option><option value="deprecated">Deprecated</option></select></label>
         <label className="wide">Slug<input placeholder="optional-url-slug" value={form.slug ?? ''} onBlur={(e) => textChange('slug', e.target.value, true)} onChange={(e) => textChange('slug', e.target.value)} /></label>

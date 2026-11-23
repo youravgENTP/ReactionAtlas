@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Reaction, ReactionInput, ReactionRichTextInput, RichTextValue, Role } from './types'
 import { FormattedText } from './inlineMarkup'
 import { RichEditor } from './CollectionDocumentEditor'
+import { reactionSeriesLabel } from './reactionSeries'
 
 const groups: [Role, string][] = [['reactant', 'Reactants'], ['product', 'Products'], ['reagent', 'Reagents'], ['catalyst', 'Catalysts'], ['solvent', 'Solvents'], ['condition', 'Conditions'], ['other', 'Other']]
 const relationLabels = { subtype_of: 'is a subtype of', application_of: 'is an application of', method_for: 'is a method for', related_to: 'is related to' }
@@ -51,7 +52,7 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave }: { reactio
     return () => window.removeEventListener('keydown', handleSaveShortcut)
   })
   return <article className="detail-card">
-    <div className="detail-header rich-detail-header"><div className="detail-title-area"><div className="index-line"><span className={`series-label ${reaction.series}`}>{reaction.series}</span><span className="rxn-index large">{reaction.display_code}</span></div><RichEditor heading={1} singleLine placeholder="Reaction name" value={value('name')} onChange={(content) => change('name', content)} /></div><div className="button-row"><button className="secondary" onClick={onEdit}>Edit metadata</button><button className="danger ghost" onClick={onDelete}>Delete</button></div></div>
+    <div className="detail-header rich-detail-header"><div className="detail-title-area"><div className="index-line"><span className={`series-label ${reaction.series}`}>{reactionSeriesLabel[reaction.series]}</span><span className="rxn-index large">{reaction.display_code}</span></div><RichEditor heading={1} singleLine placeholder="Reaction name" value={value('name')} onChange={(content) => change('name', content)} /></div><div className="button-row"><button className="secondary" onClick={onEdit}>Edit metadata</button><button className="danger ghost" onClick={onDelete}>Delete</button></div></div>
     {error && <div className="error inline-editor-error">{error}</div>}
     <section className="detail-rich-fields">
       <label>Reaction class<RichEditor singleLine placeholder="Add a reaction class…" value={value('reaction_class')} onChange={(content) => change('reaction_class', content)} /></label>

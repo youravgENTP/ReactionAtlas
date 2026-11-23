@@ -16,7 +16,7 @@ export interface ReactionComponent {
   component: Component
 }
 
-export type ReactionSeries = 'general' | 'special'
+export type ReactionSeries = 'general' | 'special' | 'scaffold'
 export type ReactionStatus = 'active' | 'deprecated'
 
 export interface ReactionAlias {

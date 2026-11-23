@@ -5,7 +5,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 Role = Literal["reactant", "product", "reagent", "catalyst", "solvent", "condition", "other"]
-ReactionSeries = Literal["general", "special"]
+ReactionSeries = Literal["general", "special", "scaffold"]
 ReactionStatus = Literal["active", "deprecated"]
 AliasType = Literal["deprecated_index", "alternate_name", "abbreviation"]
 RelationType = Literal["subtype_of", "application_of", "method_for", "related_to"]

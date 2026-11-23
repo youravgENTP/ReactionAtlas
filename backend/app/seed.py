@@ -18,7 +18,7 @@ class SeedModel(BaseModel):
 
 
 class ReactionReference(SeedModel):
-    series: Literal["general", "special"]
+    series: Literal["general", "special", "scaffold"]
     number: int = Field(gt=0, strict=True)
 
     @property
@@ -151,6 +151,7 @@ def seed_database(db: Session, dataset_path: Path = REACTION_DATA_PATH) -> dict[
     return {
         "general": sum(item.series == "general" for item in dataset.reactions),
         "special": sum(item.series == "special" for item in dataset.reactions),
+        "scaffold": sum(item.series == "scaffold" for item in dataset.reactions),
         "aliases": len(dataset.aliases),
         "relations": len(dataset.relations),
     }

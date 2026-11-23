@@ -1,6 +1,6 @@
 # ReactionAtlas
 
-ReactionAtlas is a small, local-only reaction index and study tool for organic and medicinal chemistry exam preparation. Human-readable identifiers such as `Rxn4` and `Rxn*4` stay central: search an index, reaction name, alias, reagent, reactant, product, note, or component role; inspect the reaction card; then organize reactions in a block-based study document.
+ReactionAtlas is a small, local-only reaction index and study tool for organic and medicinal chemistry exam preparation. Human-readable identifiers such as `Rxn4`, `Rxn*4`, and `SRxn4` stay central: search an index, reaction name, alias, reagent, reactant, product, note, or component role; inspect the reaction card; then organize reactions in a block-based study document.
 
 All data stays on your computer in SQLite. There is no login, cloud service, or telemetry.
 
@@ -62,7 +62,7 @@ cd backend
 
 The database path is resolved from the repository root and is always `data/reaction_atlas.db`, regardless of the directory from which Python is started.
 
-SQLAlchemy models define the database schema. On startup, a small additive SQLite upgrade runs before `create_all()`: older Drug rows receive stable numbers in `created_at`/`id` order, and a unique number index is installed without replacing any tables or rows. On the first startup only, an empty reaction database is seeded from the 18 verified reaction records in `data/reactions.json`. Existing data is never overwritten or synchronized automatically when the canonical JSON changes.
+SQLAlchemy models define the database schema. On startup, the lightweight SQLite upgrader runs before `create_all()`. Older Drug rows receive stable numbers in `created_at`/`id` order. A legacy reactions table whose CHECK constraint only accepts `general` and `special` is rebuilt transactionally to add `scaffold`: reaction IDs and all alias, relation, component, image, rich-text, collection, Drug, and Structure foreign-key links are preserved and checked before commit. On the first startup only, an empty reaction database is seeded from the 18 verified reaction records in `data/reactions.json`. Existing seed data is never reclassified or synchronized automatically when the canonical JSON changes.
 
 To discard the local database contents and recreate the verified seed data:
 
@@ -75,7 +75,13 @@ This resets the canonical reaction/component data and collections in `data/react
 
 ## Using the reaction library
 
-Select **New reaction**, choose the general or special series, enter its positive integer number and name, and add as many components as needed. The display code is derived: general reaction 4 is `Rxn4`, while special named reaction 4 is `Rxn*4`. `Rxn*` remains reserved for named reactions; scaffold-specific `SRxn` codes are not implemented. Each component has a role (reactant, product, reagent, catalyst, solvent, condition, or other) and an optional detail/stoichiometry note. Typing the same component name with different casing or whitespace reuses the existing component record. An optional image can be uploaded for the reaction card; it appears in library results, the reaction detail, and collections.
+Select **New reaction**, choose its series, enter a positive integer number and name, and add as many components as needed. The three independent namespaces are:
+
+- `Rxn<number>` — generalizable reaction patterns
+- `Rxn*<number>` — strictly named reactions
+- `SRxn<number>` — scaffold-specific transformations enabled by a particular substrate architecture or functional-group proximity
+
+For example, `Rxn1`, `Rxn*1`, and `SRxn1` may coexist. Named reactions remain exclusively in `Rxn*`; scaffold-specific transformations belong in `SRxn`. Each component has a role (reactant, product, reagent, catalyst, solvent, condition, or other) and an optional detail/stoichiometry note. Typing the same component name with different casing or whitespace reuses the existing component record. An optional image can be uploaded for the reaction card; it appears in library results, the reaction detail, and collections.
 
 Text inputs support shared LaTeX-style shortcuts. For example, type `\rightarrow` followed by a space to insert `→`. Both backslash and the Korean won-key character are recognized. Add, edit, or remove shortcuts from **Settings → LaTeX shortcuts**.
 
@@ -89,7 +95,7 @@ The search box matches, case-insensitively:
 - component names and aliases
 - component roles and component detail text
 
-Results update as you type. Searches such as `Rxn4`, `Rxn*4`, `Mannich`, `Imine`, `Michael`, `Eschweiler`, and `Nitrile` require no special syntax. The historical alias `Rxn3` resolves to active `Rxn10` and is labeled as a deprecated index; `Rxn3` is not an active reaction row.
+Results update as you type. Stable-code searches are case-insensitive and support `Rxn4`, `Rxn*4`, and `SRxn4`. Searches such as `Mannich`, `Imine`, `Michael`, `Eschweiler`, and `Nitrile` require no special syntax. The historical alias `Rxn3` resolves to active `Rxn10` and is labeled as a deprecated index; `Rxn3` is not an active reaction row.
 
 ## Collection workspace
 
@@ -114,7 +120,7 @@ Bulk import accepts a JSON array, or an object containing a `drugs` array. Creat
     "aliases": [],
     "description": "Optional notes",
     "image_directory": "drug-images/example-drug",
-    "reaction_codes": ["Rxn1", "Rxn*2"],
+    "reaction_codes": ["Rxn1", "Rxn*2", "SRxn3"],
     "structure_codes": ["Str1"]
   }
 ]
@@ -139,7 +145,7 @@ Place source images in `structure-images/<slug>/`. Import accepts a raw array or
       "aliases": ["1,3-diazole"],
       "description": "Optional notes",
       "image_directory": "structure-images/imidazole",
-      "reaction_codes": ["Rxn4"],
+      "reaction_codes": ["Rxn4", "SRxn2"],
       "drug_codes": ["Drug3"]
     }
   ]
@@ -172,7 +178,7 @@ series,number,name,reaction_class,reactants,products,reagents,catalysts,solvents
 general,4,Imine Formation,Carbonyl chemistry,Aldehyde or ketone;Primary amine,Imine,,Acid,,Mild acid catalysis,Condensation reaction,imine-formation,active
 ```
 
-Separate multiple values within a component column with a semicolon (`;`). V1 CSV parsing is deliberately simple: fields containing commas are not supported, so use JSON for those records.
+The `series` value may be `general`, `special`, or `scaffold`. Separate multiple values within a component column with a semicolon (`;`). V1 CSV parsing is deliberately simple: fields containing commas are not supported, so use JSON for those records.
 
 ## API overview
 

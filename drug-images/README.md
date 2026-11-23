@@ -19,7 +19,7 @@ Example format only (this file does not create a drug):
     "aliases": [],
     "description": "Optional notes",
     "image_directory": "drug-images/example-drug",
-    "reaction_codes": ["Rxn1", "Rxn*2"],
+    "reaction_codes": ["Rxn1", "Rxn*2", "SRxn3"],
     "structure_codes": ["Str1"]
   }
 ]

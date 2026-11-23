@@ -1,15 +1,18 @@
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
-from backend.app import models, schemas
+from backend.app import crud, models, schemas
 from backend.app.database import Base, PROJECT_ROOT
 from backend.app.routers import drugs, structures
+from backend.app.references import reaction_for_code
 from backend.app.schema_upgrade import upgrade_schema
+from backend.app.stable_codes import parse_stable_code
 
 
 class StableDatabaseTest(unittest.TestCase):
@@ -20,6 +23,7 @@ class StableDatabaseTest(unittest.TestCase):
         self.db.add_all([
             models.Reaction(series="general", number=4, name="General reaction", status="active"),
             models.Reaction(series="special", number=3, name="Named reaction", status="active"),
+            models.Reaction(series="scaffold", number=2, name="Scaffold reaction", status="active"),
         ])
         self.db.commit()
         self.temporary = tempfile.TemporaryDirectory(dir=PROJECT_ROOT)
@@ -167,6 +171,69 @@ class StableDatabaseTest(unittest.TestCase):
         _, automatic = self.import_drug("Automatic")
         self.assertEqual((first.display_code, automatic.display_code), ("Drug1", "Drug4"))
 
+    def test_19_reaction_display_codes_and_parser(self):
+        reactions = list(self.db.scalars(select(models.Reaction).order_by(models.Reaction.series)))
+        self.assertEqual(
+            {reaction.series: reaction.display_code for reaction in reactions},
+            {"general": "Rxn4", "scaffold": "SRxn2", "special": "Rxn*3"},
+        )
+        cases = {
+            "Rxn4": ("general", 4),
+            "rxn4": ("general", 4),
+            "Rxn*5": ("special", 5),
+            "rxn*5": ("special", 5),
+            "SRxn3": ("scaffold", 3),
+            "srxn3": ("scaffold", 3),
+            "SRXN 12": ("scaffold", 12),
+        }
+        for code, expected in cases.items():
+            parsed = parse_stable_code(code, "reaction")
+            self.assertEqual((parsed.reaction_series, parsed.number), expected)
+        self.assertEqual(parse_stable_code("Str2").namespace, "structure")
+        self.assertEqual(parse_stable_code("Drug4").namespace, "drug")
+
+    def test_20_malformed_stable_codes(self):
+        for code in ("Str*2", "Drug*2", "Srxn*2", "Rxn**3"):
+            with self.subTest(code=code), self.assertRaises(ValueError):
+                parse_stable_code(code)
+
+    def test_21_reaction_reference_resolution_all_series(self):
+        warnings: list[str] = []
+        resolved = [reaction_for_code(self.db, code, "test", warnings) for code in (
+            "Rxn4", "Rxn*3", "SRxn2"
+        )]
+        self.assertEqual([reaction.series for reaction in resolved], ["general", "special", "scaffold"])
+        self.assertEqual(warnings, [])
+
+    def test_22_scaffold_crud_search_and_json_round_trip(self):
+        created = crud.create_reaction(self.db, schemas.ReactionCreate(
+            series="scaffold", number=7, name="Specific ring closure",
+            slug="specific-ring-closure", components=[],
+        ))
+        self.assertEqual(created.display_code, "SRxn7")
+        self.assertEqual([item.id for item in crud.list_reactions(self.db, "srxn7")], [created.id])
+        exported_json = json.dumps(
+            schemas.ReactionRead.model_validate(created).model_dump(mode="json")
+        )
+        exported = json.loads(exported_json)
+        self.assertEqual(exported["series"], "scaffold")
+        self.db.delete(crud.get_reaction(self.db, created.id)); self.db.commit()
+        restored = crud.create_reaction(self.db, schemas.ReactionCreate(
+            series=exported["series"], number=exported["number"], name=exported["name"],
+            slug=exported["slug"], summary=exported["summary"],
+            reaction_class=exported["reaction_class"], status=exported["status"],
+            notes=exported["notes"], components=[], rich_text=exported["rich_text"],
+        ))
+        self.assertEqual((restored.series, restored.display_code), ("scaffold", "SRxn7"))
+
+    def test_23_drug_and_structure_import_link_scaffold_reactions(self):
+        drug_result, drug = self.import_drug(reaction_codes=["SRxn2"])
+        structure_result, structure = self.import_structure(reaction_codes=["SRxn2"])
+        self.assertEqual(drug_result["reactions_linked"], 1)
+        self.assertEqual(structure_result["reactions_linked"], 1)
+        self.assertEqual(drug.reaction_links[0].reaction.display_code, "SRxn2")
+        self.assertEqual(structure.reaction_links[0].reaction.display_code, "SRxn2")
+
 
 class SchemaUpgradeTest(unittest.TestCase):
     def test_15_old_drug_rows_are_backfilled_without_data_loss(self):
@@ -189,6 +256,76 @@ class SchemaUpgradeTest(unittest.TestCase):
         with engine.connect() as connection:
             rows = connection.execute(text("SELECT id, name, number FROM drugs ORDER BY number")).all()
         self.assertEqual(rows, [(3, "Earlier", 1), (8, "Later", 2)])
+
+    def test_24_old_reaction_constraint_upgrade_preserves_foreign_keys(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            connection.execute(text("""
+                CREATE TABLE reactions (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    series VARCHAR(16) NOT NULL,
+                    number INTEGER NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    slug VARCHAR(255), summary TEXT, reaction_class VARCHAR(255),
+                    status VARCHAR(16) NOT NULL, notes TEXT,
+                    created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL,
+                    UNIQUE(series, number),
+                    CHECK(series IN ('general', 'special')),
+                    CHECK(status IN ('active', 'deprecated')),
+                    CHECK(number > 0)
+                )
+            """))
+            connection.execute(text("CREATE UNIQUE INDEX ix_reactions_slug ON reactions(slug)"))
+            connection.execute(text("""
+                INSERT INTO reactions VALUES
+                (4, 'general', 4, 'General', 'general', NULL, NULL, 'active', NULL, '2026-01-01', '2026-01-01'),
+                (5, 'special', 5, 'Named', 'named', NULL, NULL, 'active', NULL, '2026-01-01', '2026-01-01')
+            """))
+            child_tables = {
+                "reaction_aliases": "reaction_id INTEGER REFERENCES reactions(id) ON DELETE CASCADE",
+                "reaction_components": "reaction_id INTEGER REFERENCES reactions(id) ON DELETE CASCADE",
+                "reaction_images": "reaction_id INTEGER REFERENCES reactions(id) ON DELETE CASCADE",
+                "reaction_rich_text": "reaction_id INTEGER REFERENCES reactions(id) ON DELETE CASCADE",
+                "collection_reactions": "reaction_id INTEGER REFERENCES reactions(id) ON DELETE CASCADE",
+                "drug_reactions": "reaction_id INTEGER REFERENCES reactions(id) ON DELETE CASCADE",
+                "structure_reactions": "reaction_id INTEGER REFERENCES reactions(id) ON DELETE CASCADE",
+            }
+            for table, definition in child_tables.items():
+                connection.execute(text(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY, {definition})"))
+                connection.execute(text(f"INSERT INTO {table} (id, reaction_id) VALUES (1, 4)"))
+            connection.execute(text("""
+                CREATE TABLE reaction_relations (
+                    id INTEGER PRIMARY KEY,
+                    source_reaction_id INTEGER REFERENCES reactions(id) ON DELETE CASCADE,
+                    target_reaction_id INTEGER REFERENCES reactions(id) ON DELETE CASCADE
+                )
+            """))
+            connection.execute(text(
+                "INSERT INTO reaction_relations VALUES (1, 4, 5)"
+            ))
+        upgrade_schema(engine)
+        upgrade_schema(engine)
+        with engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO reactions VALUES
+                (6, 'scaffold', 1, 'Scaffold', 'scaffold', NULL, NULL, 'active', NULL, '2026-01-01', '2026-01-01')
+            """))
+            rows = connection.execute(text(
+                "SELECT id, series, number FROM reactions ORDER BY id"
+            )).all()
+            violations = connection.execute(text("PRAGMA foreign_key_check")).all()
+            child_counts = {
+                table: connection.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar_one()
+                for table in [*child_tables, "reaction_relations"]
+            }
+            create_sql = connection.execute(text(
+                "SELECT sql FROM sqlite_master WHERE name='reactions'"
+            )).scalar_one()
+        self.assertEqual(rows, [(4, "general", 4), (5, "special", 5), (6, "scaffold", 1)])
+        self.assertTrue(all(count == 1 for count in child_counts.values()))
+        self.assertEqual(violations, [])
+        self.assertIn("scaffold", create_sql)
 
 
 if __name__ == "__main__":

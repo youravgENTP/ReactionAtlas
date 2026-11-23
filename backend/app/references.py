@@ -12,7 +12,7 @@ def reaction_for_code(db: Session, code: str, context: str, warnings: list[str])
         warnings.append(f"{context}: {error}")
         return None
     reaction = db.scalar(select(models.Reaction).where(
-        models.Reaction.series == ("special" if parsed.special else "general"),
+        models.Reaction.series == parsed.reaction_series,
         models.Reaction.number == parsed.number,
     ))
     if not reaction:

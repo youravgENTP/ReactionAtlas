@@ -47,6 +47,8 @@ input:focus, textarea:focus, select:focus { border-color: #498168; box-shadow: 0
 .index-line { display: flex; align-items: center; gap: 7px; }
 .series-label { color: #6d756f; font-size: 9px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
 .series-label.special { color: #75572d; }
+.series-label.scaffold { color: #536a70; }
+.code-preview { color: #44705b; font-size: 10px; font-weight: 650; letter-spacing: .06em; text-transform: none; }
 .component-hint { font-size: 11px; color: #52715f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .detail-panel { min-width: 0; overflow: auto; padding: 34px clamp(35px, 7vw, 100px); }
 .detail-card { max-width: 920px; margin: 0 auto; }
