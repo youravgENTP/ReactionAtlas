@@ -56,6 +56,7 @@ export interface Reaction {
   incoming_relations: ReactionRelation[]
   image: MediaAsset | null
   rich_text: Record<string, string>
+  drug_links: ReactionDrugLink[]
 }
 
 export interface MediaAsset {
@@ -117,6 +118,12 @@ export interface DrugReference {
   chapters: string[]
   functions: string[]
   image: MediaAsset | null
+}
+
+export interface ReactionDrugLink {
+  id: number
+  display_order: number
+  drug: DrugReference
 }
 
 export interface DrugStructureLink {

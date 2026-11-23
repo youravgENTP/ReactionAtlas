@@ -94,6 +94,25 @@ class ReactionRelationRead(BaseModel):
     relation_type: RelationType
 
 
+class ReactionDrugReferenceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    number: int
+    display_code: str
+    name: str
+    slug: str
+    chapters: list[str]
+    functions: list[str]
+    image: MediaAssetRead | None
+
+
+class ReactionDrugRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    display_order: int
+    drug: ReactionDrugReferenceRead
+
+
 class ReactionRead(ReactionBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -106,6 +125,7 @@ class ReactionRead(ReactionBase):
     incoming_relations: list[ReactionRelationRead]
     image: MediaAssetRead | None
     rich_text: dict[str, str]
+    drug_links: list[ReactionDrugRead]
 
 
 class ReactionImageUpdate(BaseModel):
@@ -163,6 +183,10 @@ class CollectionRead(CollectionBase):
 
 class ReorderRequest(BaseModel):
     reaction_ids: list[int]
+
+
+class DrugReactionAdd(BaseModel):
+    reaction_id: int
 
 
 class ImportResult(BaseModel):

@@ -4,7 +4,7 @@ Create one directory per drug here and place that drug's JPEG, PNG, GIF, or WebP
 
 For example, a JSON record with `"slug": "example-drug"` uses `drug-images/example-drug/` by default. You may instead set `"image_directory": "drug-images/custom-folder"`.
 
-The importer recursively finds supported images, copies them to ReactionAtlas-managed media storage, and links them to the drug. Each image must be 8 MB or smaller. Re-importing the same JSON updates the drug, reaction links, and changed images without creating duplicates.
+The importer recursively finds supported images, copies them to ReactionAtlas-managed `data/media/` storage, and links them to the drug. Each image must be 8 MB or smaller. Source-folder changes are applied only when the JSON is imported again. Re-importing the same JSON updates the drug and changed images without creating duplicates.
 
 Example format only (this file does not create a drug):
 
@@ -25,4 +25,4 @@ Example format only (this file does not create a drug):
 ]
 ```
 
-`number` is optional for a new record and becomes the stable `Drug<number>` code. Re-imports match by slug and retain the existing number. `structure_codes` links records from the Structure Database.
+`number` is optional for a new record and becomes the stable `Drug<number>` code. Re-imports match by slug and retain the existing number. Omitting `reaction_codes` preserves current reaction links; `[]` clears them; a non-empty list replaces them in that order. `structure_codes` links records from the Structure Database and retains its existing omission semantics.

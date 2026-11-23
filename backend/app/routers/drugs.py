@@ -74,6 +74,56 @@ def read_drug(drug_id: int, db: Session = Depends(get_db)):
     return get_drug(db, drug_id)
 
 
+@router.post("/{drug_id}/reactions", response_model=schemas.DrugRead, status_code=201)
+def add_reaction(drug_id: int, data: schemas.DrugReactionAdd, db: Session = Depends(get_db)):
+    drug = get_drug(db, drug_id)
+    reaction = db.get(models.Reaction, data.reaction_id)
+    if not reaction:
+        raise HTTPException(404, "Reaction not found")
+    if any(link.reaction_id == data.reaction_id for link in drug.reaction_links):
+        raise HTTPException(409, "Reaction is already linked to this drug")
+    next_order = max((link.display_order for link in drug.reaction_links), default=-1) + 1
+    drug.reaction_links.append(models.DrugReaction(reaction=reaction, display_order=next_order))
+    db.commit()
+    return get_drug(db, drug_id)
+
+
+@router.delete("/{drug_id}/reactions/{reaction_id}", response_model=schemas.DrugRead)
+def remove_reaction(drug_id: int, reaction_id: int, db: Session = Depends(get_db)):
+    drug = get_drug(db, drug_id)
+    if not db.get(models.Reaction, reaction_id):
+        raise HTTPException(404, "Reaction not found")
+    link = next((item for item in drug.reaction_links if item.reaction_id == reaction_id), None)
+    if not link:
+        raise HTTPException(404, "Reaction link not found")
+    drug.reaction_links.remove(link)
+    for position, item in enumerate(drug.reaction_links):
+        item.display_order = position
+    db.commit()
+    return get_drug(db, drug_id)
+
+
+@router.put("/{drug_id}/reactions/reorder", response_model=schemas.DrugRead)
+def reorder_reactions(drug_id: int, data: schemas.ReorderRequest, db: Session = Depends(get_db)):
+    drug = get_drug(db, drug_id)
+    current_ids = [link.reaction_id for link in drug.reaction_links]
+    if len(data.reaction_ids) != len(set(data.reaction_ids)):
+        raise HTTPException(400, "Reaction order contains duplicates")
+    existing_ids = set(db.scalars(
+        select(models.Reaction.id).where(models.Reaction.id.in_(data.reaction_ids))
+    )) if data.reaction_ids else set()
+    missing_ids = set(data.reaction_ids) - existing_ids
+    if missing_ids:
+        raise HTTPException(404, f"Reaction not found: {min(missing_ids)}")
+    if set(data.reaction_ids) != set(current_ids):
+        raise HTTPException(400, "Reaction order must contain every linked reaction exactly once")
+    positions = {reaction_id: position for position, reaction_id in enumerate(data.reaction_ids)}
+    for link in drug.reaction_links:
+        link.display_order = positions[link.reaction_id]
+    db.commit()
+    return get_drug(db, drug_id)
+
+
 @router.post("/import", response_model=schemas.DrugImportResult)
 def import_drugs(payload: list[schemas.DrugImportItem] | schemas.DrugImportPayload, db: Session = Depends(get_db)):
     items = payload if isinstance(payload, list) else payload.drugs
@@ -119,15 +169,16 @@ def import_drugs(payload: list[schemas.DrugImportItem] | schemas.DrugImportPaylo
                 db, drug.name, drug.image_links, models.DrugImage,
                 image_directory, MEDIA_DIR, new_files, obsolete_files, warnings
             )
-            reactions = [
-                reaction for code in item.reaction_codes
-                if (reaction := reaction_for_code(db, code, drug.name, warnings)) is not None
-            ]
-            drug.reaction_links.clear()
-            db.flush()
-            for position, reaction in enumerate(reactions):
-                drug.reaction_links.append(models.DrugReaction(reaction=reaction, display_order=position))
-            reactions_linked += len(reactions)
+            if "reaction_codes" in item.model_fields_set:
+                reactions = [
+                    reaction for code in item.reaction_codes
+                    if (reaction := reaction_for_code(db, code, drug.name, warnings)) is not None
+                ]
+                drug.reaction_links.clear()
+                db.flush()
+                for position, reaction in enumerate(reactions):
+                    drug.reaction_links.append(models.DrugReaction(reaction=reaction, display_order=position))
+                reactions_linked += len(reactions)
             if "structure_codes" in item.model_fields_set:
                 linked_structures = [
                     structure for code in item.structure_codes

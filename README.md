@@ -87,7 +87,7 @@ Text inputs support shared LaTeX-style shortcuts. For example, type `\rightarrow
 
 Subscript and superscript markup works with arbitrary text, including Korean. Use `_{text}` or `_x` for subscript and `^{text}` or `^x` for superscript; `\_` and `₩_` prefixes remain accepted for compatibility. Rich collection blocks convert the markup directly while editing; reaction form values retain the portable markup and render it typographically in cards and detail views.
 
-The Reaction Library detail pane is directly editable: select a reaction and edit its name, class, summary, or notes in place with the same rich-text controls as collection documents. A save bar appears when the document has changes. The popup remains available as **Edit metadata** for series, number, status, slug, components, and card images. Searchable plain text remains in the reaction record while sanitized formatting is stored separately, so formatting does not replace searchable content.
+The Reaction Library detail pane is directly editable: select a reaction and edit its name, class, summary, or notes in place with the same rich-text controls as collection documents. Notes images are uploaded through the media API into `data/media/`; sanitized rich-text HTML stores only their managed `/api/media/<id>/content` URL plus width and alignment metadata. A save bar appears when the document has changes. The popup remains available as **Edit metadata** for series, number, status, slug, components, and card images. Searchable plain text remains in the reaction record while sanitized formatting is stored separately, so formatting does not replace searchable content. Media deletion refuses assets that are still referenced by reaction rich text, preventing a Notes image from being silently broken.
 
 The search box matches, case-insensitively:
 
@@ -105,9 +105,11 @@ The right side is a block document editor. Add rich-text paragraphs, headings, i
 
 ## Drug database
 
-The **Drug Database** starts empty. Every Drug has a stable human-readable code such as `Drug3`; its internal SQLite primary key remains separate. Codes survive re-import and reordering, and automatically allocated codes are never reused after deletion. Drugs are grouped by chapter and function and connect to both Rxn Library synthesis reactions and Structure Database records.
+The **Drug Database** starts empty. Every Drug has a stable human-readable code such as `Drug3`; its internal SQLite primary key remains separate. Codes survive re-import and reordering, and automatically allocated codes are never reused after deletion. The sidebar is a collapsible Chapter → Drug tree; a drug assigned to multiple chapters appears under each one while retaining its stable Drug-number ordering. Chapter and function filters continue to apply to the tree.
 
-Bulk import accepts a JSON array, or an object containing a `drugs` array. Create one source-image directory per drug under `drug-images/`, then select **Import JSON**. The importer recursively discovers JPEG, PNG, GIF, and WebP files up to 8 MB, copies them into managed media storage, and links reaction codes only when they exist in the Rxn Library. Re-importing the same slug updates metadata, reaction links, and changed images without duplicating records.
+Drug details can link, unlink, reorder, and open synthesis reactions. The searchable linker matches stable `Rxn`, `Rxn*`, and `SRxn` codes, reaction names, and reaction classes. Reaction details show the same associations and navigate back to their Drug records; both views use the existing `drug_reactions` association rows.
+
+Bulk import accepts a JSON array, or an object containing a `drugs` array. Create one source-image directory per drug under `drug-images/`, then select **Import JSON**. The importer recursively discovers JPEG, PNG, GIF, and WebP files up to 8 MB and copies them into `data/media/`. Adding, replacing, or removing files in a source directory takes effect only after an import/sync operation. Re-importing the same slug updates metadata and changed images without duplicating records.
 
 ```json
 [
@@ -126,7 +128,13 @@ Bulk import accepts a JSON array, or an object containing a `drugs` array. Creat
 ]
 ```
 
-`number` is optional for new records; omitting it allocates the next stable Drug code. A slug re-import keeps its original number. When `image_directory` is omitted, it defaults to `drug-images/<slug>/`; a missing directory is created and reported as having no images. For safety, imports can only read image directories contained within the project's `drug-images/` directory. See `drug-images/README.md` for the same format near the source folders.
+`number` is optional for new records; omitting it allocates the next stable Drug code. A slug re-import keeps its original number. Omitting `reaction_codes` preserves existing Drug–Reaction links, an explicit `"reaction_codes": []` clears them, and a non-empty list replaces them in the given order. Missing reaction codes produce warnings while valid references are applied. Existing `structure_codes` preservation behavior is unchanged. When `image_directory` is omitted, it defaults to `drug-images/<slug>/`; a missing directory is created and reported as having no images. For safety, imports can only read image directories contained within the project's `drug-images/` directory. See `drug-images/README.md` for the same format near the source folders.
+
+The relationship API uses the same association model:
+
+- `POST /api/drugs/{drug_id}/reactions` adds one `reaction_id`.
+- `DELETE /api/drugs/{drug_id}/reactions/{reaction_id}` removes only the association.
+- `PUT /api/drugs/{drug_id}/reactions/reorder` accepts the complete ordered `reaction_ids` list.
 
 ## Structure database
 

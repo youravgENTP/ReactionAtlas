@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.app import crud, models, schemas
 from backend.app.database import Base, PROJECT_ROOT
-from backend.app.routers import drugs, structures
+from backend.app.routers import drugs, media, structures
 from backend.app.references import reaction_for_code
 from backend.app.schema_upgrade import upgrade_schema
 from backend.app.stable_codes import parse_stable_code
@@ -233,6 +233,71 @@ class StableDatabaseTest(unittest.TestCase):
         self.assertEqual(structure_result["reactions_linked"], 1)
         self.assertEqual(drug.reaction_links[0].reaction.display_code, "SRxn2")
         self.assertEqual(structure.reaction_links[0].reaction.display_code, "SRxn2")
+
+    def test_25_drug_import_reaction_mapping_omission_clear_and_replace(self):
+        self.import_drug(reaction_codes=["Rxn4", "Rxn*3"])
+        _, preserved = self.import_drug(description="reaction_codes omitted")
+        self.assertEqual(
+            [link.reaction.display_code for link in preserved.reaction_links],
+            ["Rxn4", "Rxn*3"],
+        )
+        self.import_drug(reaction_codes=[])
+        cleared = self.db.scalar(drugs.drug_query().where(models.Drug.slug == "drug-example"))
+        self.assertEqual(cleared.reaction_links, [])
+        _, replaced = self.import_drug(reaction_codes=["SRxn2", "Rxn4"])
+        self.assertEqual(
+            [link.reaction.display_code for link in replaced.reaction_links],
+            ["SRxn2", "Rxn4"],
+        )
+        result, partially_replaced = self.import_drug(reaction_codes=["Rxn4", "Rxn999"])
+        self.assertEqual([link.reaction.display_code for link in partially_replaced.reaction_links], ["Rxn4"])
+        self.assertTrue(any("Rxn999" in warning for warning in result["warnings"]))
+
+    def test_26_drug_reaction_link_endpoints_are_bidirectional_and_atomic(self):
+        _, drug = self.import_drug()
+        reactions = list(self.db.scalars(select(models.Reaction).order_by(models.Reaction.id)))
+        first = drugs.add_reaction(drug.id, schemas.DrugReactionAdd(reaction_id=reactions[0].id), self.db)
+        linked = drugs.add_reaction(drug.id, schemas.DrugReactionAdd(reaction_id=reactions[1].id), self.db)
+        self.assertEqual([link.reaction_id for link in linked.reaction_links], [reactions[0].id, reactions[1].id])
+        with self.assertRaisesRegex(HTTPException, "already linked"):
+            drugs.add_reaction(drug.id, schemas.DrugReactionAdd(reaction_id=reactions[0].id), self.db)
+        with self.assertRaisesRegex(HTTPException, "every linked reaction"):
+            drugs.reorder_reactions(drug.id, schemas.ReorderRequest(reaction_ids=[reactions[0].id]), self.db)
+        with self.assertRaisesRegex(HTTPException, "Reaction not found"):
+            drugs.reorder_reactions(
+                drug.id, schemas.ReorderRequest(reaction_ids=[reactions[0].id, 99999]), self.db
+            )
+        unchanged = drugs.get_drug(self.db, drug.id)
+        self.assertEqual([link.reaction_id for link in unchanged.reaction_links], [reactions[0].id, reactions[1].id])
+        reordered = drugs.reorder_reactions(
+            drug.id, schemas.ReorderRequest(reaction_ids=[reactions[1].id, reactions[0].id]), self.db
+        )
+        self.assertEqual([link.reaction_id for link in reordered.reaction_links], [reactions[1].id, reactions[0].id])
+        schemas.DrugRead.model_validate(reordered)
+        reaction = crud.get_reaction(self.db, reactions[0].id)
+        self.assertEqual(reaction.drug_links[0].drug.id, drug.id)
+        schemas.ReactionRead.model_validate(reaction)
+        remaining = drugs.remove_reaction(drug.id, reactions[1].id, self.db)
+        self.assertEqual([link.reaction_id for link in remaining.reaction_links], [reactions[0].id])
+        with self.assertRaisesRegex(HTTPException, "Reaction not found"):
+            drugs.add_reaction(drug.id, schemas.DrugReactionAdd(reaction_id=99999), self.db)
+        with self.assertRaisesRegex(HTTPException, "Drug not found"):
+            drugs.add_reaction(99999, schemas.DrugReactionAdd(reaction_id=reactions[0].id), self.db)
+        self.assertEqual(first.id, drug.id)
+
+    def test_27_media_delete_refuses_reaction_notes_reference(self):
+        reaction = self.db.scalar(select(models.Reaction).where(models.Reaction.series == "general"))
+        asset = models.MediaAsset(
+            id="12345678-1234-4234-8234-123456789abc",
+            original_filename="notes.png", stored_filename="notes.png",
+            mime_type="image/png", size_bytes=10, width=10, height=10,
+        )
+        reaction.rich_text_record = models.ReactionRichText(content=json.dumps({
+            "notes": f'<img src="/api/media/{asset.id}/content" data-media-id="{asset.id}">'
+        }))
+        self.db.add(asset); self.db.commit()
+        with self.assertRaisesRegex(HTTPException, "reaction rich text"):
+            media.delete_media(asset.id, self.db)
 
 
 class SchemaUpgradeTest(unittest.TestCase):

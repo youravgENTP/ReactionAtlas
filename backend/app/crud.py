@@ -43,6 +43,10 @@ def reaction_query():
         selectinload(models.Reaction.incoming_relations).selectinload(models.ReactionRelation.target_reaction),
         selectinload(models.Reaction.image_link).selectinload(models.ReactionImage.asset),
         selectinload(models.Reaction.rich_text_record),
+        selectinload(models.Reaction.drug_links)
+        .selectinload(models.DrugReaction.drug)
+        .selectinload(models.Drug.image_links)
+        .selectinload(models.DrugImage.asset),
     )
 
 

@@ -18,7 +18,7 @@ function inputFromReaction(reaction: Reaction): ReactionInput {
   }
 }
 
-export function ReactionDetail({ reaction, onEdit, onDelete, onSave }: { reaction: Reaction; onEdit: () => void; onDelete: () => void; onSave: (data: ReactionRichTextInput) => Promise<void> }) {
+export function ReactionDetail({ reaction, onEdit, onDelete, onSave, onOpenDrug }: { reaction: Reaction; onEdit: () => void; onDelete: () => void; onSave: (data: ReactionRichTextInput) => Promise<void>; onOpenDrug: (code: string) => void }) {
   const relations = [...reaction.outgoing_relations.map((item) => ({ ...item, direction: 'outgoing' as const })), ...reaction.incoming_relations.map((item) => ({ ...item, direction: 'incoming' as const }))]
   const [draft, setDraft] = useState(() => inputFromReaction(reaction))
   const [saving, setSaving] = useState(false)
@@ -66,6 +66,7 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave }: { reactio
     })}</div>
     {reaction.aliases.length > 0 && <section className="notes"><h3>Aliases</h3><ul className="metadata-list">{reaction.aliases.map((alias) => <li key={alias.id}><strong>{alias.alias}</strong> <span>{alias.alias_type.replace('_', ' ')}</span>{alias.note && <small>{alias.note}</small>}</li>)}</ul></section>}
     {relations.length > 0 && <section className="notes"><h3>Relations</h3><ul className="metadata-list">{relations.map((relation) => <li key={`${relation.direction}-${relation.id}`}>{relation.direction === 'incoming' && <><strong>{relation.source_display_code}</strong> {relation.source_name} </>}<span>{relationLabels[relation.relation_type]}</span>{relation.direction === 'outgoing' ? <><strong>{relation.target_display_code}</strong> {relation.target_name}</> : 'this reaction'}</li>)}</ul></section>}
+    <section className="notes"><h3>Linked drugs</h3>{reaction.drug_links.length ? <div className="reaction-drug-links">{reaction.drug_links.map(({ drug }) => <button type="button" key={drug.id} onClick={() => onOpenDrug(drug.display_code)}>{drug.image && <img src={drug.image.content_url} alt="" />}<span><small>{drug.display_code}</small><strong>{drug.name}</strong><em>{drug.chapters.join(' · ') || 'Uncategorized'}</em></span><b>Open →</b></button>)}</div> : <p className="muted compact">No drugs are linked to this reaction.</p>}</section>
     <section className="notes detail-notes-editor"><h3>Notes</h3><RichEditor allowImages placeholder="Add notes…" value={value('notes')} onChange={(content) => change('notes', content)} /></section>
     {dirty && <div className="inline-save-bar"><span>Unsaved rich-text changes · ⌘S to save</span><button className="secondary" disabled={saving} onClick={() => setDraft(original)}>Discard</button><button disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save changes'}</button></div>}
   </article>

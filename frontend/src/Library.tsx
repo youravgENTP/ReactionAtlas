@@ -25,7 +25,7 @@ function parseCsv(text: string): ReactionInput[] {
   })
 }
 
-export function Library({ initialIndex }: { initialIndex?: string }) {
+export function Library({ initialIndex, onOpenDrug }: { initialIndex?: string; onOpenDrug: (code: string) => void }) {
   const [reactions, setReactions] = useState<Reaction[]>([])
   const [selected, setSelected] = useState<Reaction | null>(null)
   const [search, setSearch] = useState(initialIndex ?? '')
@@ -102,7 +102,7 @@ export function Library({ initialIndex }: { initialIndex?: string }) {
         </button>)}</div>
       </aside>
       <button type="button" className="library-sidebar-toggle" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? '>>' : '<<'}</button>
-      <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} onEdit={() => setEditing(selected)} onDelete={() => void remove()} onSave={saveDirect} /> : <div className="empty-state"><span>RA</span><h2>No reaction selected</h2><p>Search your atlas or create a reaction record.</p></div>}</main>
+      <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} onEdit={() => setEditing(selected)} onDelete={() => void remove()} onSave={saveDirect} onOpenDrug={onOpenDrug} /> : <div className="empty-state"><span>RA</span><h2>No reaction selected</h2><p>Search your atlas or create a reaction record.</p></div>}</main>
     </div>
     {editing && <ReactionForm reaction={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} onSave={save} />}
   </div>
