@@ -27,7 +27,8 @@ function AppContent() {
     setRoute(next)
   }, [])
   const navigate = useCallback((next: AppRoute) => requestNavigation(() => apply(next)), [apply, requestNavigation])
-  const recordRoute = useCallback((next: AppRoute) => apply(next), [apply])
+  const recordRoute = useCallback((next: AppRoute, mode: 'push' | 'replace' = 'push') => apply(next, mode), [apply])
+  const routeReaction = useCallback((code: string, mode: 'push' | 'replace' = 'push') => recordRoute({ page: 'library', code }, mode), [recordRoute])
 
   useEffect(() => {
     window.history.replaceState({ reactionAtlas: true }, '', routeHref(routeRef.current))
@@ -52,7 +53,7 @@ function AppContent() {
 
   return <div className="app-shell">
     <header className="app-header"><button className="brand" onClick={() => openPage('library')}><span>RA</span><strong>ReactionAtlas</strong></button><nav><button className={page === 'library' ? 'active' : ''} onClick={() => openPage('library')}>Reaction Library</button><button className={page === 'collections' ? 'active' : ''} onClick={() => openPage('collections')}>Collections</button><button className={page === 'drugs' ? 'active' : ''} onClick={() => openPage('drugs')}>Drug Database</button><button className={page === 'structures' ? 'active' : ''} onClick={() => openPage('structures')}>Structure Database</button><button className={page === 'questions' ? 'active' : ''} onClick={() => openPage('questions')}>Questions</button><button className={page === 'settings' ? 'active' : ''} onClick={() => openPage('settings')}>Settings</button></nav><div className="local-badge"><i /> Local database</div></header>
-    {page === 'library' ? <Library initialIndex={route.code} deepLink={route.item ? { field: route.field, item: route.item } : undefined} onRouteReaction={(code) => recordRoute({ page: 'library', code })} onOpenDrug={openDrug} />
+    {page === 'library' ? <Library initialIndex={route.code} deepLink={route.item ? { field: route.field, item: route.item } : undefined} onRouteReaction={routeReaction} onOpenDrug={openDrug} />
       : page === 'collections' ? <Collections initialCollectionId={route.collectionId} targetItemId={route.item} onRouteCollection={(collectionId) => recordRoute({ page: 'collections', collectionId })} onOpenReaction={openReaction} />
         : page === 'drugs' ? <DrugDatabase initialCode={route.code} targetItemId={route.field === 'description' ? route.item : undefined} onRouteDrug={(code) => recordRoute({ page: 'drugs', code })} onOpenReaction={openReaction} onOpenStructure={openStructure} />
           : page === 'structures' ? <StructureDatabase initialCode={route.code} onRouteStructure={(code) => recordRoute({ page: 'structures', code })} onOpenReaction={openReaction} onOpenDrug={openDrug} />

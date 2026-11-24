@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import type { Annotation, AnnotationSourceType, StudyItem } from './types'
-import { annotationItemHref } from './annotationCore'
 
 export interface AnnotationSource {
   sourceType: AnnotationSourceType
   entityId: number
   field: string
   blockId?: string
-  rootHref: string
   allowDrxn?: boolean
   unsaved?: boolean
 }
@@ -49,8 +47,4 @@ export function useSourceAnnotations(source?: Pick<AnnotationSource, 'sourceType
     finally { setSavingItem('') }
   }
   return { annotations, error, savingItem, create, remove, reload }
-}
-
-export function itemLink(source: AnnotationSource, itemId: string) {
-  return annotationItemHref(source, itemId)
 }

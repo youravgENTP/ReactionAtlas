@@ -7,6 +7,7 @@ import { useLatex } from './latex'
 import { FormattedText, RichFormattedText } from './inlineMarkup'
 import { reactionSeriesLabel } from './reactionSeries'
 import { useUnsavedChanges } from './UnsavedChanges'
+import { automaticReactionSelection, exactReactionForRoute, explicitReactionRoute, isLatestRequest } from './reactionSelection'
 
 const sidebarPreferenceKey = 'reactionAtlas.library.sidebarCollapsed'
 
@@ -26,37 +27,52 @@ function parseCsv(text: string): ReactionInput[] {
   })
 }
 
-export function Library({ initialIndex, deepLink, onRouteReaction, onOpenDrug }: { initialIndex?: string; deepLink?: { field?: string; item: string }; onRouteReaction: (code: string) => void; onOpenDrug: (code: string) => void }) {
+export function Library({ initialIndex, deepLink, onRouteReaction, onOpenDrug }: { initialIndex?: string; deepLink?: { field?: string; item: string }; onRouteReaction: (code: string, mode?: 'push' | 'replace') => void; onOpenDrug: (code: string) => void }) {
   const [reactions, setReactions] = useState<Reaction[]>([])
   const [selected, setSelected] = useState<Reaction | null>(null)
-  const [search, setSearch] = useState(initialIndex ?? '')
+  const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<Reaction | 'new' | null>(null)
   const [error, setError] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return window.localStorage.getItem(sidebarPreferenceKey) === 'true' } catch { return false }
   })
   const fileInput = useRef<HTMLInputElement>(null)
+  const searchRequest = useRef(0)
+  const routeRequest = useRef(0)
   const { transform } = useLatex()
-  const { requestNavigation, hasDirty } = useUnsavedChanges()
+  const { requestNavigation } = useUnsavedChanges()
 
   const load = async (term = search) => {
+    const request = ++searchRequest.current
     try {
-      const data = await api.reactions(term); setReactions(data)
-      setSelected((current) => hasDirty() && current ? current : data.find((item) => item.id === current?.id) ?? data[0] ?? null); setError('')
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load reactions') }
+      const data = await api.reactions(term)
+      if (!isLatestRequest(request, searchRequest.current)) return
+      setReactions(data); setError('')
+    } catch (cause) { if (isLatestRequest(request, searchRequest.current)) setError(cause instanceof Error ? cause.message : 'Could not load reactions') }
   }
   useEffect(() => { const timer = window.setTimeout(() => void load(search), 180); return () => clearTimeout(timer) }, [search])
   useEffect(() => {
-    if (!initialIndex || selected?.display_code.toLowerCase() === initialIndex.toLowerCase()) return
-    void api.reactions(initialIndex).then((items) => setSelected(items.find((item) => item.display_code.toLowerCase() === initialIndex.toLowerCase()) ?? null)).catch(() => setSelected(null))
-  }, [initialIndex])
+    const request = ++routeRequest.current
+    if (initialIndex && selected?.display_code.toLowerCase() === initialIndex.toLowerCase()) return
+    void api.reactions(initialIndex ?? '').then((items) => {
+      if (!isLatestRequest(request, routeRequest.current)) return
+      setError('')
+      if (initialIndex) { setSelected(exactReactionForRoute(items, initialIndex)); return }
+      const automatic = automaticReactionSelection(items)
+      setSelected(automatic.record)
+      if (automatic.route) onRouteReaction(automatic.route.code, automatic.route.mode)
+    }).catch((cause) => {
+      if (!isLatestRequest(request, routeRequest.current)) return
+      setSelected(null); setError(cause instanceof Error ? cause.message : 'Could not load reaction')
+    })
+  }, [initialIndex, onRouteReaction])
   useEffect(() => {
     try { window.localStorage.setItem(sidebarPreferenceKey, String(sidebarCollapsed)) } catch { /* Storage may be unavailable. */ }
   }, [sidebarCollapsed])
 
   const save = async (data: ReactionInput) => {
     const saved = editing === 'new' ? await api.createReaction(data) : await api.updateReaction((editing as Reaction).id, data)
-    setEditing(null); await load(''); setSearch(''); setSelected(saved)
+    setEditing(null); await load(''); setSearch(''); routeRequest.current += 1; setSelected(saved); onRouteReaction(saved.display_code)
   }
   const saveDirect = async (data: ReactionRichTextInput) => {
     if (!selected) throw new Error('No reaction selected')
@@ -67,7 +83,10 @@ export function Library({ initialIndex, deepLink, onRouteReaction, onOpenDrug }:
   }
   const remove = async () => {
     if (!selected || !window.confirm(`Delete ${selected.display_code} — ${selected.name}?`)) return
-    await api.deleteReaction(selected.id); setSelected(null); await load()
+    await api.deleteReaction(selected.id)
+    const items = await api.reactions(''); setReactions(items); setSearch('')
+    const automatic = automaticReactionSelection(items); setSelected(automatic.record)
+    if (automatic.route) onRouteReaction(automatic.route.code, automatic.route.mode)
   }
   const importFile = async (file: File) => {
     try {
@@ -103,7 +122,7 @@ export function Library({ initialIndex, deepLink, onRouteReaction, onOpenDrug }:
     {error && <div className="error page-error">{error}</div>}
     <div className={`library-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className="results-panel" aria-hidden={sidebarCollapsed}><div className="panel-label">{reactions.length} {reactions.length === 1 ? 'reaction' : 'reactions'}</div>
-        <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => requestNavigation(() => { setSelected(reaction); onRouteReaction(reaction.display_code) })}>
+        <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => requestNavigation(() => { const route = explicitReactionRoute(reaction); routeRequest.current += 1; setSelected(reaction); onRouteReaction(route.code, route.mode) })}>
           {reaction.image && <img className="result-thumbnail" src={reaction.image.content_url} alt="" />}<span className="index-line"><span className={`series-label ${reaction.series}`}>{reactionSeriesLabel[reaction.series]}</span><span className="rxn-index">{reaction.display_code}</span></span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><small><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></small>
           {search && <span className="component-hint">{reaction.aliases.filter((a) => a.alias.toLowerCase().includes(search.toLowerCase())).map((a) => `${a.alias} (${a.alias_type.replace('_', ' ')})`).concat(reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name)).join(' · ')}</span>}
         </button>)}</div>
