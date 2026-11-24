@@ -294,3 +294,28 @@ export interface Collection {
   updated_at: string
   reaction_links: CollectionLink[]
 }
+
+export type AnnotationKind = 'drxn' | 'question'
+export type AnnotationSourceType = 'drug' | 'reaction' | 'collection'
+export type QuestionStatus = 'open' | 'in_progress' | 'resolved'
+export interface Annotation {
+  id: number
+  kind: AnnotationKind
+  source_type: AnnotationSourceType
+  source_entity_id: number
+  source_code: string
+  source_name: string
+  document_field: string
+  block_id: string | null
+  item_id: string
+  stable_code: string | null
+  question_text: string | null
+  status: QuestionStatus | null
+  resolution_memo: string | null
+  created_at: string
+  updated_at: string
+  resolved_at: string | null
+  source_exists: boolean
+  source_href: string
+  source_item_text: string | null
+}

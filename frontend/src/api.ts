@@ -1,4 +1,4 @@
-import type { BackupStatus, Collection, Component, Drug, DrugImportInput, DrugImportResult, LatexShortcut, MediaAsset, Reaction, ReactionInput, ReactionRichTextInput, Structure, StructureImportInput, StructureImportResult } from './types'
+import type { Annotation, AnnotationKind, AnnotationSourceType, BackupStatus, Collection, Component, Drug, DrugImportInput, DrugImportResult, LatexShortcut, MediaAsset, QuestionStatus, Reaction, ReactionInput, ReactionRichTextInput, Structure, StructureImportInput, StructureImportResult } from './types'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -38,6 +38,13 @@ export const api = {
   saveLatexShortcuts: (data: LatexShortcut[]) => request<LatexShortcut[]>('/api/settings/latex-shortcuts', { method: 'PUT', body: JSON.stringify(data) }),
   backupStatus: () => request<BackupStatus>('/api/backups/status'),
   createBackup: () => request<BackupStatus>('/api/backups', { method: 'POST' }),
+  annotations: (filters: { kind?: AnnotationKind; status?: QuestionStatus | ''; source_type?: AnnotationSourceType | ''; search?: string; source_entity_id?: number } = {}) => {
+    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]))
+    return request<Annotation[]>(`/api/annotations?${query}`)
+  },
+  createAnnotation: (data: { kind: AnnotationKind; source_type: AnnotationSourceType; source_entity_id: number; document_field: string; block_id?: string; item_id: string; question_text?: string }) => request<Annotation>('/api/annotations', { method: 'POST', body: JSON.stringify(data) }),
+  updateAnnotation: (id: number, data: { question_text?: string; status?: QuestionStatus; resolution_memo?: string }) => request<Annotation>(`/api/annotations/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteAnnotation: (id: number) => request<void>(`/api/annotations/${id}`, { method: 'DELETE' }),
   drugs: () => request<Drug[]>('/api/drugs'),
   updateDrugDescription: (drugId: number, description: string | null, descriptionDocument: string | null) => request<Drug>(`/api/drugs/${drugId}/description`, { method: 'PATCH', body: JSON.stringify({ description, description_document: descriptionDocument }) }),
   linkDrugReaction: (drugId: number, reactionId: number) => request<Drug>(`/api/drugs/${drugId}/reactions`, { method: 'POST', body: JSON.stringify({ reaction_id: reactionId }) }),

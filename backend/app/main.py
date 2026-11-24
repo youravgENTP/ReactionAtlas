@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from . import crud, models, schemas
 from .database import Base, engine, get_db
 from .backup import backup_if_due, seconds_until_backup
-from .routers import backups, collections, components, drugs, media, reactions, settings, structures
+from .routers import annotations, backups, collections, components, drugs, media, reactions, settings, structures
 from .schema_upgrade import initialize_number_counters, upgrade_schema
 from .seed import seed_database
 
@@ -68,6 +68,7 @@ app.include_router(settings.router)
 app.include_router(backups.router)
 app.include_router(drugs.router)
 app.include_router(structures.router)
+app.include_router(annotations.router)
 
 
 @app.get("/api/health")

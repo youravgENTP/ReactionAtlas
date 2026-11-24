@@ -136,6 +136,16 @@ The 24 curated Drug structure images come from Wikimedia Commons. Run `python3 s
 
 The schema upgrade for hierarchical Drug descriptions is additive: startup adds one nullable `drugs.description_document` text column. Existing rows, stable numbers, and relationships are not rewritten, and no destructive migration or reseed is required.
 
+## Stable routes, links, and hierarchy annotations
+
+The frontend uses browser-history routes for records (`/reactions/<code>`, `/drugs/<code>`, `/structures/<code>`, and `/collections/<id>`). Hierarchy links add the persistent item UUID, plus the document field where needed, for example `/drugs/Drug24?field=description&item=<UUID>`. A web server hosting the production build must return `index.html` for these nested application routes.
+
+Cmd/Ctrl+K opens the internal-link picker in rich-text fields. Only ReactionAtlas record URLs are persisted as editor anchors; unsafe and external schemes are removed by the rich-text sanitizer.
+
+DRxn and Question markers are stored in the shared `annotations` table and reference the original hierarchy item rather than copying note content. Annotation changes save immediately. A new marker can only be added after its hierarchy item has been saved, while deletion of a source item retains the annotation as a missing-source record. Questions retain their status and optional resolution memo after resolution.
+
+The `annotations` schema change is additive and idempotent: SQLAlchemy `create_all` creates the new table and indexes at startup without rewriting existing Drug, Reaction, Structure, Collection, rich-text, relationship, or media records. No destructive migration or reseed is required. Back up `data/reaction_atlas.db` and `data/media/` before applying schema changes to an existing installation.
+
 The relationship API uses the same association model:
 
 - `POST /api/drugs/{drug_id}/reactions` adds one `reaction_id`.

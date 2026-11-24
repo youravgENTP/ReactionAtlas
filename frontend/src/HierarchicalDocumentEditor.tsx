@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { api } from './api'
 import { useLatex } from './latex'
 import { formatScriptHtml, normalizeScriptNodes, normalizeTextNodes, sanitizeRichHtml } from './richText'
@@ -6,11 +6,15 @@ import type { RichTextValue, StudyBlock, StudyDocument, StudyItem } from './type
 import { addStudyItemAfter, flattenStudyItems, hierarchyMarker, indentStudyItem, newStudyItem, nextStudyItemId, outdentStudyItem, previousStudyItemId, removeStudyItem, updateStudyItem } from './hierarchy'
 import { newHierarchyBlock, newTextBlock } from './studyDocument'
 import { useInternalLinkPicker } from './InternalLinkPicker'
+import { itemLink, useSourceAnnotations, type AnnotationSource } from './annotations'
+import type { Annotation } from './types'
 
 type ActivePosition = { blockId: string; itemId?: string }
 export interface HierarchyImage { id: string; type: 'image'; media_asset_id: string; width_percent: number; align: 'left' | 'center' | 'right'; anchor_item_id?: string; anchor_side?: 'before' | 'after' }
+interface AnnotationUi { source: AnnotationSource; annotations: Annotation[]; savingItem: string; create: (kind: 'drxn' | 'question', item: StudyItem, source: AnnotationSource) => Promise<void>; remove: (annotation: Annotation) => Promise<void> }
+const AnnotationContext = createContext<AnnotationUi | null>(null)
 
-export function HierarchicalDocumentEditor({ document, placeholder, targetItemId, onChange }: { document: StudyDocument; placeholder?: string; targetItemId?: string; onChange: (document: StudyDocument) => void }) {
+export function HierarchicalDocumentEditor({ document, placeholder, targetItemId, annotationSource, onChange }: { document: StudyDocument; placeholder?: string; targetItemId?: string; annotationSource?: Omit<AnnotationSource, 'blockId'>; onChange: (document: StudyDocument) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [active, setActive] = useState<ActivePosition | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -52,6 +56,7 @@ export function HierarchicalDocumentEditor({ document, placeholder, targetItemId
     const next = [...blocks]; [next[index], next[targetIndex]] = [next[targetIndex], next[index]]; commit(next)
   }
   const removeBlock = (block: StudyBlock) => {
+    if (block.type === 'hierarchy' && annotationSource && !window.confirm('Delete this hierarchy block? Any annotations on its items will be retained as missing-source records.')) return
     const itemIds = block.type === 'hierarchy' ? new Set(flattenStudyItems(block.items).map((item) => item.id)) : new Set<string>()
     commit(blocks.filter((candidate) => candidate.id !== block.id && (candidate.type !== 'image' || !candidate.anchor_item_id || !itemIds.has(candidate.anchor_item_id))))
   }
@@ -90,7 +95,7 @@ export function HierarchicalDocumentEditor({ document, placeholder, targetItemId
         return <div className={`study-flow-block ${block.type}`} key={block.id} onFocusCapture={() => setActive({ blockId: block.id })}>
           {block.type !== 'image' && <BlockControls first={flowIds.indexOf(block.id) === 0} last={flowIds.indexOf(block.id) === flowIds.length - 1} onUp={() => moveBlock(block.id, -1)} onDown={() => moveBlock(block.id, 1)} onRemove={() => removeBlock(block)} />}
           {block.type === 'text' && <StudyRichInput multiline placeholder={placeholder ?? 'Write a paragraph…'} value={block.content} onFocus={() => setActive({ blockId: block.id })} onChange={(content) => updateBlock(block.id, { ...block, content })} />}
-          {block.type === 'hierarchy' && <HierarchyEditor items={block.items} images={images} onActive={(itemId) => setActive({ blockId: block.id, itemId })} onChange={(items) => updateHierarchy(block.id, items)} onImageAnchor={anchorImage} onImageChange={(image) => updateBlock(image.id, image)} onImageRemove={(id) => commit(blocks.filter((item) => item.id !== id))} />}
+          {block.type === 'hierarchy' && <HierarchyEditor items={block.items} images={images} annotationSource={annotationSource ? { ...annotationSource, blockId: block.id } : undefined} onActive={(itemId) => setActive({ blockId: block.id, itemId })} onChange={(items) => updateHierarchy(block.id, items)} onImageAnchor={anchorImage} onImageChange={(image) => updateBlock(image.id, image)} onImageRemove={(id) => commit(blocks.filter((item) => item.id !== id))} />}
           {block.type === 'image' && <StudyImage block={block} onChange={(image) => updateBlock(block.id, image)} onRemove={() => removeBlock(block)} />}
         </div>
       })}
@@ -102,8 +107,14 @@ export function HierarchicalDocumentEditor({ document, placeholder, targetItemId
   </div>
 }
 
-export function HierarchyEditor({ items, images = [], targetItemId, onActive = () => undefined, onChange, onImageAnchor = () => undefined, onImageChange = () => undefined, onImageRemove = () => undefined }: { items: StudyItem[]; images?: HierarchyImage[]; targetItemId?: string; onActive?: (id: string) => void; onChange: (items: StudyItem[]) => void; onImageAnchor?: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange?: (image: HierarchyImage) => void; onImageRemove?: (id: string) => void }) {
+export function HierarchyEditor({ items, images = [], targetItemId, annotationSource, onActive = () => undefined, onChange, onImageAnchor = () => undefined, onImageChange = () => undefined, onImageRemove = () => undefined }: { items: StudyItem[]; images?: HierarchyImage[]; targetItemId?: string; annotationSource?: AnnotationSource; onActive?: (id: string) => void; onChange: (items: StudyItem[]) => void; onImageAnchor?: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange?: (image: HierarchyImage) => void; onImageRemove?: (id: string) => void }) {
   const focusNext = useRef<string | undefined>(undefined)
+  const annotationState = useSourceAnnotations(annotationSource)
+  const scopedAnnotations = annotationState.annotations.filter((annotation) => annotation.document_field === annotationSource?.field && (!annotationSource?.blockId || annotation.block_id === annotationSource.blockId))
+  const removeItem = (source: StudyItem[], id: string) => {
+    if (scopedAnnotations.some((annotation) => annotation.item_id === id) && !window.confirm('This item has annotations. Delete the note item and retain its Questions as missing-source records?')) return source
+    return removeStudyItem(source, id)
+  }
   useEffect(() => {
     if (!focusNext.current) return
     const editor = window.document.querySelector<HTMLElement>(`[data-study-item="${focusNext.current}"]`)
@@ -130,14 +141,17 @@ export function HierarchyEditor({ items, images = [], targetItemId, onActive = (
     if (event.key === 'Enter') { event.preventDefault(); const item = newStudyItem(); focusNext.current = item.id; onChange(addStudyItemAfter(source, id, item)); return }
     if (event.key === 'Backspace' && !content.text && items.length) {
       const previous = previousStudyItemId(source, id)
-      event.preventDefault(); focusNext.current = previous; onChange(removeStudyItem(source, id))
+      event.preventDefault(); focusNext.current = previous; onChange(removeItem(source, id))
     }
   }
   const addFirst = () => { const item = newStudyItem(); focusNext.current = item.id; onChange([item]) }
-  return <div className="hierarchy-editor">{items.length ? <HierarchyRows items={items} depth={0} images={images} onActive={onActive} onChange={(id, content) => onChange(updateStudyItem(items, id, content))} onKeyAction={keyAction} onRemove={(id) => onChange(removeStudyItem(items, id))} onImageAnchor={onImageAnchor} onImageChange={onImageChange} onImageRemove={onImageRemove} /> : <button type="button" className="hierarchy-empty-add" onClick={addFirst}>+ Add list item</button>}</div>
+  const content = items.length ? <HierarchyRows items={items} depth={0} images={images} onActive={onActive} onChange={(id, value) => onChange(updateStudyItem(items, id, value))} onKeyAction={keyAction} onRemove={(id) => onChange(removeItem(items, id))} onImageAnchor={onImageAnchor} onImageChange={onImageChange} onImageRemove={onImageRemove} /> : <button type="button" className="hierarchy-empty-add" onClick={addFirst}>+ Add list item</button>
+  const annotationUi = annotationSource ? { source: annotationSource, annotations: scopedAnnotations, savingItem: annotationState.savingItem, create: annotationState.create, remove: annotationState.remove } : null
+  return <div className="hierarchy-editor">{annotationState.error && <div className="annotation-error">{annotationState.error}</div>}{annotationUi ? <AnnotationContext.Provider value={annotationUi}>{content}</AnnotationContext.Provider> : content}</div>
 }
 
 function HierarchyRows({ items, depth, images, onActive, onChange, onKeyAction, onRemove, onImageAnchor, onImageChange, onImageRemove }: { items: StudyItem[]; depth: number; images: HierarchyImage[]; onActive: (id: string) => void; onChange: (id: string, content: RichTextValue) => void; onKeyAction: (event: KeyboardEvent<HTMLDivElement>, id: string, content: RichTextValue) => void; onRemove: (id: string) => void; onImageAnchor: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange: (image: HierarchyImage) => void; onImageRemove: (id: string) => void }) {
+  const annotationUi = useContext(AnnotationContext)
   return <>{items.map((item, index) => {
     const before = images.filter((image) => image.anchor_item_id === item.id && image.anchor_side === 'before')
     const after = images.filter((image) => image.anchor_item_id === item.id && image.anchor_side !== 'before')
@@ -148,11 +162,22 @@ function HierarchyRows({ items, depth, images, onActive, onChange, onKeyAction, 
     })
     return <div className="hierarchy-node" key={item.id}>
       <div className="hierarchy-image-slot" {...imageSlot('before')}>{before.map((image) => <StudyImage key={image.id} block={image} onChange={onImageChange} onRemove={() => onImageRemove(image.id)} />)}</div>
-      <div className={`hierarchy-row depth-${Math.min(depth, 3)}`}><span className="hierarchy-marker">{hierarchyMarker(depth, index)}</span><StudyRichInput editorId={item.id} placeholder="List item…" value={{ text: item.text, html: item.html }} onFocus={() => onActive(item.id)} onKeyAction={(event, content) => onKeyAction(event, item.id, content)} onRemove={() => onRemove(item.id)} onChange={(content) => onChange(item.id, content)} /></div>
+      <div className={`hierarchy-row depth-${Math.min(depth, 3)}`}><span className="hierarchy-marker">{hierarchyMarker(depth, index)}</span><StudyRichInput editorId={item.id} placeholder="List item…" value={{ text: item.text, html: item.html }} onFocus={() => onActive(item.id)} onKeyAction={(event, content) => onKeyAction(event, item.id, content)} onRemove={() => onRemove(item.id)} onChange={(content) => onChange(item.id, content)} />{annotationUi && <HierarchyAnnotationControls item={item} ui={annotationUi} />}</div>
       <div className="hierarchy-image-slot" {...imageSlot('after')}>{after.map((image) => <StudyImage key={image.id} block={image} onChange={onImageChange} onRemove={() => onImageRemove(image.id)} />)}</div>
       {item.children?.length ? <div className="hierarchy-children"><HierarchyRows items={item.children} depth={depth + 1} images={images} onActive={onActive} onChange={onChange} onKeyAction={onKeyAction} onRemove={onRemove} onImageAnchor={onImageAnchor} onImageChange={onImageChange} onImageRemove={onImageRemove} /></div> : null}
     </div>
   })}</>
+}
+
+function HierarchyAnnotationControls({ item, ui }: { item: StudyItem; ui: AnnotationUi }) {
+  const annotations = ui.annotations.filter((annotation) => annotation.item_id === item.id)
+  const question = annotations.find((annotation) => annotation.kind === 'question')
+  const drxn = annotations.find((annotation) => annotation.kind === 'drxn')
+  const copy = async () => {
+    const href = new URL(itemLink(ui.source, item.id), window.location.origin).href
+    try { await navigator.clipboard.writeText(href) } catch { window.prompt('Copy link to item', href) }
+  }
+  return <div className="hierarchy-annotation-controls">{drxn && <span className="annotation-badge drxn" title={drxn.stable_code ?? 'Drug-specific reaction'}>{drxn.stable_code}</span>}{question && <span className={`annotation-badge question ${question.status}`}>Q · {question.status?.replace('_', ' ')}</span>}{ui.savingItem === item.id && <span className="annotation-saving">Saving…</span>}<div className="annotation-menu"><button type="button" disabled={ui.savingItem === item.id} onMouseDown={(event) => event.preventDefault()} onClick={() => void copy()} title="Copy link to item">Link</button>{!question && <button type="button" disabled={ui.savingItem === item.id || ui.source.unsaved} onMouseDown={(event) => event.preventDefault()} onClick={() => void ui.create('question', item, ui.source)} title={ui.source.unsaved ? 'Save the document first' : 'Mark as Question'}>Q</button>}{ui.source.allowDrxn && !drxn && <button type="button" disabled={ui.savingItem === item.id || ui.source.unsaved} onMouseDown={(event) => event.preventDefault()} onClick={() => void ui.create('drxn', item, ui.source)} title={ui.source.unsaved ? 'Save the document first' : 'Mark as DRxn'}>DRxn</button>}{annotations.map((annotation) => <button type="button" className="annotation-remove" key={annotation.id} disabled={ui.savingItem === item.id} onMouseDown={(event) => event.preventDefault()} onClick={() => void ui.remove(annotation)} title={`Remove ${annotation.kind} annotation`}>×{annotation.kind === 'drxn' ? 'D' : 'Q'}</button>)}</div></div>
 }
 
 function StudyRichInput({ value, multiline = false, editorId, placeholder, onFocus, onKeyAction, onRemove, onChange }: { value: RichTextValue; multiline?: boolean; editorId?: string; placeholder: string; onFocus?: () => void; onKeyAction?: (event: KeyboardEvent<HTMLDivElement>, content: RichTextValue) => void; onRemove?: () => void; onChange: (value: RichTextValue) => void }) {

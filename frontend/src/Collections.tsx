@@ -112,7 +112,7 @@ export function Collections({ initialCollectionId, targetItemId, onRouteCollecti
         <div className="add-reaction"><input placeholder="Add reaction by index or name…" value={addSearch} onBlur={(e) => setAddSearch(transform(e.target.value, true))} onChange={(e) => setAddSearch(transform(e.target.value))} />{addSearch && <div className="add-results">{available.map((reaction) => <button key={reaction.id} onClick={() => void add(reaction.id)}><span className="rxn-index">{reaction.display_code}</span>{reaction.name}</button>)}</div>}</div>
       </aside>
       <main className="document-panel"><div className="document-tabs"><strong>Document</strong><span>{document.blocks.length} blocks · rich text and LaTeX shortcuts enabled</span></div>
-        <CollectionDocumentEditor document={document} reactions={active.reaction_links.map((link) => link.reaction)} targetItemId={targetItemId} onChange={setDocument} onOpenReaction={onOpenReaction} />
+        <CollectionDocumentEditor document={document} reactions={active.reaction_links.map((link) => link.reaction)} targetItemId={targetItemId} annotationSource={{ sourceType: 'collection', entityId: active.id, field: 'document', rootHref: `/collections/${active.id}`, unsaved: dirty }} onChange={setDocument} onOpenReaction={onOpenReaction} />
       </main>
     </div>
   </div>

@@ -9,6 +9,9 @@ ReactionSeries = Literal["general", "special", "scaffold"]
 ReactionStatus = Literal["active", "deprecated"]
 AliasType = Literal["deprecated_index", "alternate_name", "abbreviation"]
 RelationType = Literal["subtype_of", "application_of", "method_for", "related_to"]
+AnnotationKind = Literal["drxn", "question"]
+AnnotationSourceType = Literal["drug", "reaction", "collection"]
+QuestionStatus = Literal["open", "in_progress", "resolved"]
 
 
 class ComponentCreate(BaseModel):
@@ -197,6 +200,44 @@ class DrugDescriptionUpdate(BaseModel):
 class ImportResult(BaseModel):
     created: int
     updated: int
+
+
+class AnnotationCreate(BaseModel):
+    kind: AnnotationKind
+    source_type: AnnotationSourceType
+    source_entity_id: int
+    document_field: str = Field(min_length=1, max_length=64)
+    block_id: str | None = Field(default=None, max_length=36)
+    item_id: str = Field(min_length=1, max_length=36)
+    question_text: str | None = None
+
+
+class AnnotationUpdate(BaseModel):
+    question_text: str | None = None
+    status: QuestionStatus | None = None
+    resolution_memo: str | None = None
+
+
+class AnnotationRead(BaseModel):
+    id: int
+    kind: AnnotationKind
+    source_type: AnnotationSourceType
+    source_entity_id: int
+    source_code: str
+    source_name: str
+    document_field: str
+    block_id: str | None
+    item_id: str
+    stable_code: str | None
+    question_text: str | None
+    status: QuestionStatus | None
+    resolution_memo: str | None
+    created_at: datetime
+    updated_at: datetime
+    resolved_at: datetime | None
+    source_exists: bool
+    source_href: str
+    source_item_text: str | None
 
 
 class DrugImportItem(BaseModel):

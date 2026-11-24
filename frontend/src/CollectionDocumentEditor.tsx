@@ -8,11 +8,13 @@ import { flattenStudyItems } from './hierarchy'
 import { HierarchyEditor, StudyImage, type HierarchyImage } from './HierarchicalDocumentEditor'
 import { newCollectionBlock } from './collectionDocument'
 import { useInternalLinkPicker } from './InternalLinkPicker'
+import type { AnnotationSource } from './annotations'
 
-export function CollectionDocumentEditor({ document, reactions, targetItemId, onChange, onOpenReaction }: {
+export function CollectionDocumentEditor({ document, reactions, targetItemId, annotationSource, onChange, onOpenReaction }: {
   document: CollectionDocument
   reactions: Reaction[]
   targetItemId?: string
+  annotationSource?: Omit<AnnotationSource, 'blockId'>
   onChange: (document: CollectionDocument) => void
   onOpenReaction: (code: string) => void
 }) {
@@ -28,6 +30,7 @@ export function CollectionDocumentEditor({ document, reactions, targetItemId, on
     const next = [...blocks]; [next[index], next[targetIndex]] = [next[targetIndex], next[index]]; commit(next)
   }
   const remove = (block: CollectionBlock) => {
+    if (block.type === 'hierarchy' && annotationSource && !window.confirm('Delete this hierarchy block? Any Questions on its items will be retained as missing-source records.')) return
     const itemIds = block.type === 'hierarchy' ? new Set(flattenStudyItems(block.items).map((item) => item.id)) : new Set<string>()
     commit(blocks.filter((candidate) => candidate.id !== block.id && (candidate.type !== 'image' || !candidate.anchor_item_id || !itemIds.has(candidate.anchor_item_id))))
   }
@@ -49,7 +52,7 @@ export function CollectionDocumentEditor({ document, reactions, targetItemId, on
         <div className="block-controls"><button disabled={flow[0]?.id === block.id} onClick={() => move(block.id, -1)}>↑</button><button disabled={flow.at(-1)?.id === block.id} onClick={() => move(block.id, 1)}>↓</button><button onClick={() => remove(block)}>×</button></div>
         {block.type === 'heading' && <><select className="heading-level" value={block.level} onChange={(event) => update(index, { ...block, level: Number(event.target.value) as 1 | 2 | 3 })}><option value="1">H1</option><option value="2">H2</option><option value="3">H3</option></select><RichEditor value={block.content} heading={block.level} onChange={(content) => update(index, { ...block, content })} /></>}
         {block.type === 'text' && <RichEditor value={block.content} onChange={(content) => update(index, { ...block, content })} />}
-        {block.type === 'hierarchy' && <HierarchyEditor items={block.items} images={images} targetItemId={flattenStudyItems(block.items).some((item) => item.id === targetItemId) ? targetItemId : undefined} onChange={(items) => updateHierarchy(block, items)} onImageAnchor={anchorImage} onImageChange={(image: HierarchyImage) => update(indexFor(blocks, image.id), image)} onImageRemove={(imageId) => commit(blocks.filter((item) => item.id !== imageId))} />}
+        {block.type === 'hierarchy' && <HierarchyEditor items={block.items} images={images} targetItemId={flattenStudyItems(block.items).some((item) => item.id === targetItemId) ? targetItemId : undefined} annotationSource={annotationSource ? { ...annotationSource, blockId: block.id } : undefined} onChange={(items) => updateHierarchy(block, items)} onImageAnchor={anchorImage} onImageChange={(image: HierarchyImage) => update(indexFor(blocks, image.id), image)} onImageRemove={(imageId) => commit(blocks.filter((item) => item.id !== imageId))} />}
         {block.type === 'image' && (block.media_asset_id ? <StudyImage block={block} onChange={(next) => update(index, next)} onRemove={() => remove(block)} /> : <CollectionImage block={block} onChange={(next) => update(index, next)} />)}
         {block.type === 'reaction' && <ReactionEmbed block={block} reactions={reactions} onChange={(next) => update(index, next)} onOpenReaction={onOpenReaction} />}
         {block.type === 'divider' && <hr />}

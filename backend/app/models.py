@@ -260,6 +260,34 @@ class AppSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
 
+class Annotation(Base):
+    __tablename__ = "annotations"
+    __table_args__ = (
+        UniqueConstraint("kind", "source_type", "source_entity_id", "document_field", "item_id", name="uq_annotation_source_kind"),
+        UniqueConstraint("stable_code", name="uq_annotation_stable_code"),
+        CheckConstraint("kind IN ('drxn', 'question')", name="ck_annotation_kind"),
+        CheckConstraint("source_type IN ('drug', 'reaction', 'collection')", name="ck_annotation_source_type"),
+        CheckConstraint("status IS NULL OR status IN ('open', 'in_progress', 'resolved')", name="ck_annotation_status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), index=True)
+    source_type: Mapped[str] = mapped_column(String(16), index=True)
+    source_entity_id: Mapped[int] = mapped_column(Integer, index=True)
+    source_code: Mapped[str] = mapped_column(String(64), index=True)
+    source_name: Mapped[str] = mapped_column(String(255))
+    document_field: Mapped[str] = mapped_column(String(64))
+    block_id: Mapped[str | None] = mapped_column(String(36))
+    item_id: Mapped[str] = mapped_column(String(36), index=True)
+    stable_code: Mapped[str | None] = mapped_column(String(64), index=True)
+    question_text: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str | None] = mapped_column(String(16))
+    resolution_memo: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class Drug(Base):
     __tablename__ = "drugs"
     __table_args__ = (
