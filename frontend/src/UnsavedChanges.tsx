@@ -45,7 +45,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
       const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href]')
       if (!anchor || anchor.download || anchor.target || anchor.origin !== window.location.origin) return
-      event.preventDefault(); requestNavigation(() => window.location.assign(anchor.href))
+      event.preventDefault(); requestNavigation(() => window.dispatchEvent(new CustomEvent('reactionatlas:navigate', { detail: anchor.href })))
     }
     window.addEventListener('beforeunload', beforeUnload)
     document.addEventListener('click', internalLink, true)

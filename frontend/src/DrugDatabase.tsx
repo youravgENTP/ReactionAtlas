@@ -10,7 +10,7 @@ import { reconcileSavedValue } from './unsavedChangesCore'
 const sidebarPreferenceKey = 'reactionAtlas.drugs.sidebarCollapsed'
 const chapterCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
-export function DrugDatabase({ initialCode, onOpenReaction, onOpenStructure }: { initialCode?: string; onOpenReaction: (code: string) => void; onOpenStructure: (code: string) => void }) {
+export function DrugDatabase({ initialCode, targetItemId, onRouteDrug, onOpenReaction, onOpenStructure }: { initialCode?: string; targetItemId?: string; onRouteDrug: (code: string) => void; onOpenReaction: (code: string) => void; onOpenStructure: (code: string) => void }) {
   const [drugs, setDrugs] = useState<Drug[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
@@ -35,6 +35,10 @@ export function DrugDatabase({ initialCode, onOpenReaction, onOpenStructure }: {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load drugs') }
   }
   useEffect(() => { void load() }, [])
+  useEffect(() => {
+    if (!initialCode || !drugs.length) return
+    setSelectedId(drugs.find((drug) => drug.display_code.toLowerCase() === initialCode.toLowerCase())?.id ?? null)
+  }, [initialCode, drugs])
   useEffect(() => {
     try { window.localStorage.setItem(sidebarPreferenceKey, String(sidebarCollapsed)) } catch { /* Storage may be unavailable. */ }
   }, [sidebarCollapsed])
@@ -96,12 +100,12 @@ export function DrugDatabase({ initialCode, onOpenReaction, onOpenStructure }: {
       <aside className="drug-results" aria-hidden={sidebarCollapsed}><div className="panel-label">{filtered.length} {filtered.length === 1 ? 'drug' : 'drugs'}</div><div className="drug-tree result-list">
         {groups.map((group) => {
           const expanded = searching || expandedChapters.has(group.name)
-          return <section className="drug-tree-chapter" key={group.name}><button type="button" className="drug-tree-heading" aria-expanded={expanded} onClick={() => toggleChapter(group.name)}><span aria-hidden="true">{expanded ? '⌄' : '›'}</span><strong>{group.name}</strong><small>{group.drugs.length}</small></button>{expanded && <div>{group.drugs.map((drug) => <DrugTreeItem drug={drug} selected={drug.id === selectedId} key={`${group.name}-${drug.id}`} onSelect={(id) => requestNavigation(() => setSelectedId(id))} />)}</div>}</section>
+          return <section className="drug-tree-chapter" key={group.name}><button type="button" className="drug-tree-heading" aria-expanded={expanded} onClick={() => toggleChapter(group.name)}><span aria-hidden="true">{expanded ? '⌄' : '›'}</span><strong>{group.name}</strong><small>{group.drugs.length}</small></button>{expanded && <div>{group.drugs.map((drug) => <DrugTreeItem drug={drug} selected={drug.id === selectedId} key={`${group.name}-${drug.id}`} onSelect={(id) => requestNavigation(() => { setSelectedId(id); const next = drugs.find((item) => item.id === id); if (next) onRouteDrug(next.display_code) })} />)}</div>}</section>
         })}
-        {uncategorized.length > 0 && <section className="drug-tree-chapter"><button type="button" className="drug-tree-heading" aria-expanded={searching || expandedChapters.has('')} onClick={() => toggleChapter('')}><span aria-hidden="true">{searching || expandedChapters.has('') ? '⌄' : '›'}</span><strong>Uncategorized</strong><small>{uncategorized.length}</small></button>{(searching || expandedChapters.has('')) && <div>{uncategorized.map((drug) => <DrugTreeItem drug={drug} selected={drug.id === selectedId} key={`uncategorized-${drug.id}`} onSelect={(id) => requestNavigation(() => setSelectedId(id))} />)}</div>}</section>}
+        {uncategorized.length > 0 && <section className="drug-tree-chapter"><button type="button" className="drug-tree-heading" aria-expanded={searching || expandedChapters.has('')} onClick={() => toggleChapter('')}><span aria-hidden="true">{searching || expandedChapters.has('') ? '⌄' : '›'}</span><strong>Uncategorized</strong><small>{uncategorized.length}</small></button>{(searching || expandedChapters.has('')) && <div>{uncategorized.map((drug) => <DrugTreeItem drug={drug} selected={drug.id === selectedId} key={`uncategorized-${drug.id}`} onSelect={(id) => requestNavigation(() => { setSelectedId(id); const next = drugs.find((item) => item.id === id); if (next) onRouteDrug(next.display_code) })} />)}</div>}</section>}
       </div></aside>
       <button type="button" className="library-sidebar-toggle drug-sidebar-toggle" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? '>>' : '<<'}</button>
-      <main className="drug-detail">{selected ? <DrugDetail drug={selected} onChange={updateDrug} onOpenReaction={onOpenReaction} onOpenStructure={onOpenStructure} /> : <DrugEmpty hasDrugs={drugs.length > 0} />}</main>
+      <main className="drug-detail">{selected ? <DrugDetail drug={selected} targetItemId={targetItemId} onChange={updateDrug} onOpenReaction={onOpenReaction} onOpenStructure={onOpenStructure} /> : initialCode ? <div className="drug-empty"><span>?</span><h2>Drug not found</h2><p>No drug matches <code>{initialCode}</code>.</p></div> : <DrugEmpty hasDrugs={drugs.length > 0} />}</main>
     </div>
   </div>
 }
@@ -110,7 +114,7 @@ function DrugTreeItem({ drug, selected, onSelect }: { drug: Drug; selected: bool
   return <button className={`drug-result ${selected ? 'active' : ''}`} onClick={() => onSelect(drug.id)}>{drug.image_links[0] && <img src={drug.image_links[0].asset.content_url} alt="" />}<span><small className="record-code">{drug.display_code}</small><strong>{drug.name}</strong><em>{drug.functions.join(' · ') || 'No function assigned'}</em></span></button>
 }
 
-function DrugDetail({ drug, onChange, onOpenReaction, onOpenStructure }: { drug: Drug; onChange: (drug: Drug) => void; onOpenReaction: (code: string) => void; onOpenStructure: (code: string) => void }) {
+function DrugDetail({ drug, targetItemId, onChange, onOpenReaction, onOpenStructure }: { drug: Drug; targetItemId?: string; onChange: (drug: Drug) => void; onOpenReaction: (code: string) => void; onOpenStructure: (code: string) => void }) {
   const [linking, setLinking] = useState(false)
   const [reactionSearch, setReactionSearch] = useState('')
   const [candidates, setCandidates] = useState<Reaction[]>([])
@@ -172,7 +176,7 @@ function DrugDetail({ drug, onChange, onOpenReaction, onOpenStructure }: { drug:
   useUnsavedEditor({ id: `drug:${drug.id}:description`, label: `${drug.display_code} description`, dirty: descriptionDirty, saving: descriptionSaving, save: saveDescription, discard: discardDescription })
   return <article className="drug-record"><span className="eyebrow">Drug record · {drug.display_code}</span><h1>{drug.name}</h1>{drug.aliases.length > 0 && <p className="drug-aliases">Also known as {drug.aliases.join(', ')}</p>}
     <div className="drug-tags">{drug.chapters.map((item) => <span className="chapter" key={`chapter-${item}`}>{item}</span>)}{drug.functions.map((item) => <span key={`function-${item}`}>{item}</span>)}</div>
-    <section className="drug-description-editor"><h2>Description</h2><HierarchicalDocumentEditor placeholder="Add a drug description…" document={descriptionDocument} onChange={setDescriptionDocument} />{descriptionError && <div className="error mapping-error">{descriptionError}</div>}{descriptionDirty && <div className="inline-save-bar drug-description-save"><span>Unsaved description changes</span><button type="button" className="secondary" disabled={descriptionSaving} onClick={discardDescription}>Discard</button><button type="button" disabled={descriptionSaving} onClick={() => void saveDescription().catch(() => undefined)}>{descriptionSaving ? 'Saving…' : 'Save description'}</button></div>}</section>
+    <section className="drug-description-editor"><h2>Description</h2><HierarchicalDocumentEditor placeholder="Add a drug description…" document={descriptionDocument} targetItemId={targetItemId} onChange={setDescriptionDocument} />{descriptionError && <div className="error mapping-error">{descriptionError}</div>}{descriptionDirty && <div className="inline-save-bar drug-description-save"><span>Unsaved description changes</span><button type="button" className="secondary" disabled={descriptionSaving} onClick={discardDescription}>Discard</button><button type="button" disabled={descriptionSaving} onClick={() => void saveDescription().catch(() => undefined)}>{descriptionSaving ? 'Saving…' : 'Save description'}</button></div>}</section>
     {drug.image_links.length > 0 && <section><h2>Images</h2><div className="drug-gallery">{drug.image_links.map((image) => <figure key={image.id}><img src={image.asset.content_url} alt={`${drug.name} — ${image.asset.original_filename}`} /><figcaption>{image.asset.original_filename}</figcaption></figure>)}</div></section>}
     <section><div className="section-heading mapping-heading"><h2>Synthesis reactions</h2><button type="button" className="secondary" onClick={() => setLinking((current) => !current)}>{linking ? 'Close' : '+ Link reaction'}</button></div>
       {linking && <div className="reaction-link-picker"><input autoFocus aria-label="Search reactions to link" placeholder="Search Rxn code, name, or class…" value={reactionSearch} onChange={(event) => setReactionSearch(event.target.value)} />{available.length ? <div className="reaction-link-results">{available.map((reaction) => <button type="button" disabled={busy} key={reaction.id} onClick={() => void mutate(() => api.linkDrugReaction(drug.id, reaction.id))}><small>{reaction.display_code}</small><span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><em><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></em></span><b>Link</b></button>)}</div> : <p className="muted compact">No unlinked reactions match.</p>}</div>}

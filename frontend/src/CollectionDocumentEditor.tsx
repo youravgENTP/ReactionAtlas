@@ -7,10 +7,12 @@ import { formatScriptHtml, normalizeScriptNodes, normalizeTextNodes, sanitizeRic
 import { flattenStudyItems } from './hierarchy'
 import { HierarchyEditor, StudyImage, type HierarchyImage } from './HierarchicalDocumentEditor'
 import { newCollectionBlock } from './collectionDocument'
+import { useInternalLinkPicker } from './InternalLinkPicker'
 
-export function CollectionDocumentEditor({ document, reactions, onChange, onOpenReaction }: {
+export function CollectionDocumentEditor({ document, reactions, targetItemId, onChange, onOpenReaction }: {
   document: CollectionDocument
   reactions: Reaction[]
+  targetItemId?: string
   onChange: (document: CollectionDocument) => void
   onOpenReaction: (code: string) => void
 }) {
@@ -38,6 +40,7 @@ export function CollectionDocumentEditor({ document, reactions, onChange, onOpen
   }
   const anchorImage = (imageId: string, itemId: string, side: 'before' | 'after') => commit(blocks.map((block) => block.id === imageId && block.type === 'image' ? { ...block, anchor_item_id: itemId, anchor_side: side } : block))
   const images = blocks.filter((block): block is Extract<CollectionBlock, { type: 'image' }> => block.type === 'image')
+  const targetExists = !targetItemId || blocks.some((block) => block.type === 'hierarchy' && flattenStudyItems(block.items).some((item) => item.id === targetItemId))
 
   return <div className="block-document">
     <div className="block-toolbar"><span>Insert</span><button onClick={() => add('heading')}>Heading</button><button onClick={() => add('text')}>Text</button><button onClick={() => add('hierarchy')}>Hierarchy</button><button onClick={() => add('image')}>Image</button><button disabled={!reactions.length} onClick={() => add('reaction')}>Reaction card</button><button onClick={() => add('divider')}>Divider</button></div>
@@ -46,13 +49,14 @@ export function CollectionDocumentEditor({ document, reactions, onChange, onOpen
         <div className="block-controls"><button disabled={flow[0]?.id === block.id} onClick={() => move(block.id, -1)}>↑</button><button disabled={flow.at(-1)?.id === block.id} onClick={() => move(block.id, 1)}>↓</button><button onClick={() => remove(block)}>×</button></div>
         {block.type === 'heading' && <><select className="heading-level" value={block.level} onChange={(event) => update(index, { ...block, level: Number(event.target.value) as 1 | 2 | 3 })}><option value="1">H1</option><option value="2">H2</option><option value="3">H3</option></select><RichEditor value={block.content} heading={block.level} onChange={(content) => update(index, { ...block, content })} /></>}
         {block.type === 'text' && <RichEditor value={block.content} onChange={(content) => update(index, { ...block, content })} />}
-        {block.type === 'hierarchy' && <HierarchyEditor items={block.items} images={images} onChange={(items) => updateHierarchy(block, items)} onImageAnchor={anchorImage} onImageChange={(image: HierarchyImage) => update(indexFor(blocks, image.id), image)} onImageRemove={(imageId) => commit(blocks.filter((item) => item.id !== imageId))} />}
+        {block.type === 'hierarchy' && <HierarchyEditor items={block.items} images={images} targetItemId={flattenStudyItems(block.items).some((item) => item.id === targetItemId) ? targetItemId : undefined} onChange={(items) => updateHierarchy(block, items)} onImageAnchor={anchorImage} onImageChange={(image: HierarchyImage) => update(indexFor(blocks, image.id), image)} onImageRemove={(imageId) => commit(blocks.filter((item) => item.id !== imageId))} />}
         {block.type === 'image' && (block.media_asset_id ? <StudyImage block={block} onChange={(next) => update(index, next)} onRemove={() => remove(block)} /> : <CollectionImage block={block} onChange={(next) => update(index, next)} />)}
         {block.type === 'reaction' && <ReactionEmbed block={block} reactions={reactions} onChange={(next) => update(index, next)} onOpenReaction={onOpenReaction} />}
         {block.type === 'divider' && <hr />}
       </div>)}
       {!blocks.length && <div className="document-empty"><strong>Build a study document</strong><p>Add rich text, headings, images, dividers, and linked reaction cards.</p><button onClick={() => add('text')}>+ Start writing</button></div>}
     </div>
+    {targetItemId && !targetExists && <div className="missing-target">The linked hierarchy item no longer exists.</div>}
   </div>
 }
 
@@ -99,6 +103,7 @@ export function RichEditor({ value, heading, singleLine = false, placeholder, al
     lastEmittedHtml.current = html
     onChange({ text, html })
   }
+  const links = useInternalLinkPicker(editor, () => emit())
   const command = (name: string, value?: string) => { document.execCommand(name, false, value); emit() }
   const rememberSelection = () => {
     const selection = window.getSelection()
@@ -171,15 +176,16 @@ export function RichEditor({ value, heading, singleLine = false, placeholder, al
     {allowImages && <input ref={imageInput} hidden type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={(event) => void uploadImage(event.target.files?.[0])} />}
     {selectedImage && <div className="rich-image-controls"><label>Width <input aria-label="Image width" type="range" min="15" max="100" value={imageWidth} onChange={(event) => updateImage(Number(event.target.value), imageAlign)} /></label><span>{imageWidth}%</span>{(['left', 'center', 'right'] as const).map((align) => <button type="button" className={imageAlign === align ? 'active' : ''} key={align} aria-label={`Align image ${align}`} onMouseDown={(event) => event.preventDefault()} onClick={() => updateImage(imageWidth, align)}>{align}</button>)}<button type="button" onMouseDown={(event) => event.preventDefault()} onClick={removeImage}>Remove</button></div>}
     {imageError && <small className="rich-image-error">{imageError}</small>}
-    <div ref={editor} contentEditable role="textbox" aria-label={placeholder ?? (heading ? `Heading ${heading}` : 'Rich text')} suppressContentEditableWarning data-editor-id={editorId} data-placeholder={placeholder ?? (heading ? `Heading ${heading}` : 'Write something…')} onFocus={onEditorFocus} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onClick={selectImage} onPaste={pasteImage} onDragOver={(event) => { if (allowImages && [...event.dataTransfer.items].some((item) => item.type.startsWith('image/'))) event.preventDefault() }} onDrop={dropImage} onCompositionStart={() => { composing.current = true; finishingComposition.current = false }} onCompositionEnd={() => { composing.current = false; finishingComposition.current = true; requestAnimationFrame(() => { finishingComposition.current = false; emit() }) }} onInput={() => { if (!composing.current && !finishingComposition.current) emit() }} onBlur={() => { finishingComposition.current = false; emit(true) }} onKeyDown={(event) => {
+    <div ref={editor} contentEditable role="textbox" aria-label={placeholder ?? (heading ? `Heading ${heading}` : 'Rich text')} suppressContentEditableWarning data-editor-id={editorId} data-placeholder={placeholder ?? (heading ? `Heading ${heading}` : 'Write something…')} onFocus={onEditorFocus} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onClick={(event) => { links.handleClick(event); selectImage(event) }} onPaste={pasteImage} onDragOver={(event) => { if (allowImages && [...event.dataTransfer.items].some((item) => item.type.startsWith('image/'))) event.preventDefault() }} onDrop={dropImage} onCompositionStart={() => { composing.current = true; finishingComposition.current = false }} onCompositionEnd={() => { composing.current = false; finishingComposition.current = true; requestAnimationFrame(() => { finishingComposition.current = false; emit() }) }} onInput={() => { if (!composing.current && !finishingComposition.current) emit() }} onBlur={() => { finishingComposition.current = false; emit(true) }} onKeyDown={(event) => {
       if (event.nativeEvent.isComposing || composing.current) return
+      if (links.openPicker(event)) return
       if (onEditorKeyDown) {
         if (event.key === 'Enter' || event.key === 'Tab') emit(true)
         const current = readValue(); if (current) onEditorKeyDown(event, current)
         if (event.defaultPrevented) return
       }
       if (singleLine && event.key === 'Enter') { event.preventDefault(); emit(true) }
-    }} />
+    }} />{links.picker}
   </div>
 }
 

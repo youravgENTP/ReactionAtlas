@@ -26,7 +26,7 @@ function parseCsv(text: string): ReactionInput[] {
   })
 }
 
-export function Library({ initialIndex, onOpenDrug }: { initialIndex?: string; onOpenDrug: (code: string) => void }) {
+export function Library({ initialIndex, deepLink, onRouteReaction, onOpenDrug }: { initialIndex?: string; deepLink?: { field?: string; item: string }; onRouteReaction: (code: string) => void; onOpenDrug: (code: string) => void }) {
   const [reactions, setReactions] = useState<Reaction[]>([])
   const [selected, setSelected] = useState<Reaction | null>(null)
   const [search, setSearch] = useState(initialIndex ?? '')
@@ -46,6 +46,10 @@ export function Library({ initialIndex, onOpenDrug }: { initialIndex?: string; o
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load reactions') }
   }
   useEffect(() => { const timer = window.setTimeout(() => void load(search), 180); return () => clearTimeout(timer) }, [search])
+  useEffect(() => {
+    if (!initialIndex || selected?.display_code.toLowerCase() === initialIndex.toLowerCase()) return
+    void api.reactions(initialIndex).then((items) => setSelected(items.find((item) => item.display_code.toLowerCase() === initialIndex.toLowerCase()) ?? null)).catch(() => setSelected(null))
+  }, [initialIndex])
   useEffect(() => {
     try { window.localStorage.setItem(sidebarPreferenceKey, String(sidebarCollapsed)) } catch { /* Storage may be unavailable. */ }
   }, [sidebarCollapsed])
@@ -99,13 +103,13 @@ export function Library({ initialIndex, onOpenDrug }: { initialIndex?: string; o
     {error && <div className="error page-error">{error}</div>}
     <div className={`library-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className="results-panel" aria-hidden={sidebarCollapsed}><div className="panel-label">{reactions.length} {reactions.length === 1 ? 'reaction' : 'reactions'}</div>
-        <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => requestNavigation(() => setSelected(reaction))}>
+        <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => requestNavigation(() => { setSelected(reaction); onRouteReaction(reaction.display_code) })}>
           {reaction.image && <img className="result-thumbnail" src={reaction.image.content_url} alt="" />}<span className="index-line"><span className={`series-label ${reaction.series}`}>{reactionSeriesLabel[reaction.series]}</span><span className="rxn-index">{reaction.display_code}</span></span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><small><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></small>
           {search && <span className="component-hint">{reaction.aliases.filter((a) => a.alias.toLowerCase().includes(search.toLowerCase())).map((a) => `${a.alias} (${a.alias_type.replace('_', ' ')})`).concat(reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name)).join(' · ')}</span>}
         </button>)}</div>
       </aside>
       <button type="button" className="library-sidebar-toggle" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? '>>' : '<<'}</button>
-      <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} onEdit={() => requestNavigation(() => setEditing(selected))} onDelete={() => requestNavigation(() => void remove())} onSave={saveDirect} onOpenDrug={onOpenDrug} /> : <div className="empty-state"><span>RA</span><h2>No reaction selected</h2><p>Search your atlas or create a reaction record.</p></div>}</main>
+      <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} deepLink={deepLink} onEdit={() => requestNavigation(() => setEditing(selected))} onDelete={() => requestNavigation(() => void remove())} onSave={saveDirect} onOpenDrug={onOpenDrug} /> : <div className="empty-state"><span>RA</span><h2>{initialIndex ? 'Reaction not found' : 'No reaction selected'}</h2><p>{initialIndex ? `No reaction matches ${initialIndex}.` : 'Search your atlas or create a reaction record.'}</p></div>}</main>
     </div>
     {editing && <ReactionForm reaction={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} onSave={save} />}
   </div>

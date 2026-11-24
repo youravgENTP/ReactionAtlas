@@ -6,55 +6,55 @@ import { DrugDatabase } from './DrugDatabase'
 import { StructureDatabase } from './StructureDatabase'
 import { LatexProvider } from './latex'
 import { UnsavedChangesProvider, useUnsavedChanges } from './UnsavedChanges'
-
-type Page = 'library' | 'collections' | 'drugs' | 'structures' | 'settings'
-interface Destination { page: Page; initialIndex: string; initialDrugCode: string; initialStructureCode: string }
-interface HistoryDestination extends Destination { reactionAtlas: true; index: number }
-
-const initialDestination: Destination = { page: 'library', initialIndex: '', initialDrugCode: '', initialStructureCode: '' }
+import { parseAppRoute, routeHref, type AppPage, type AppRoute } from './routing'
 
 export default function App() {
   return <LatexProvider><UnsavedChangesProvider><AppContent /></UnsavedChangesProvider></LatexProvider>
 }
 
 function AppContent() {
-  const [destination, setDestination] = useState<Destination>(initialDestination)
+  const [route, setRoute] = useState<AppRoute>(() => parseAppRoute(window.location.pathname, window.location.search))
   const { requestNavigation, hasDirty } = useUnsavedChanges()
-  const destinationRef = useRef(destination)
-  const historyIndex = useRef(0)
+  const routeRef = useRef(route)
   const allowNextPop = useRef(false)
-  destinationRef.current = destination
+  routeRef.current = route
 
-  const apply = useCallback((next: Destination) => setDestination(next), [])
-  const navigate = useCallback((next: Destination) => requestNavigation(() => {
-    const index = historyIndex.current + 1; historyIndex.current = index
-    window.history.pushState({ ...next, reactionAtlas: true, index } satisfies HistoryDestination, '')
-    apply(next)
-  }), [apply, requestNavigation])
+  const apply = useCallback((next: AppRoute, mode: 'push' | 'replace' = 'push') => {
+    const href = routeHref(next)
+    if (mode === 'replace') window.history.replaceState({ reactionAtlas: true }, '', href)
+    else if (`${window.location.pathname}${window.location.search}` !== href) window.history.pushState({ reactionAtlas: true }, '', href)
+    setRoute(next)
+  }, [])
+  const navigate = useCallback((next: AppRoute) => requestNavigation(() => apply(next)), [apply, requestNavigation])
+  const recordRoute = useCallback((next: AppRoute) => apply(next), [apply])
 
   useEffect(() => {
-    window.history.replaceState({ ...destinationRef.current, reactionAtlas: true, index: historyIndex.current } satisfies HistoryDestination, '')
-    const popState = (event: PopStateEvent) => {
-      const target = event.state as HistoryDestination | null
-      if (!target?.reactionAtlas) return
-      if (allowNextPop.current) { allowNextPop.current = false; historyIndex.current = target.index; apply(target); return }
-      if (!hasDirty()) { historyIndex.current = target.index; apply(target); return }
-      const current = destinationRef.current
-      window.history.pushState({ ...current, reactionAtlas: true, index: historyIndex.current } satisfies HistoryDestination, '')
+    window.history.replaceState({ reactionAtlas: true }, '', routeHref(routeRef.current))
+    const popState = () => {
+      const target = parseAppRoute(window.location.pathname, window.location.search)
+      if (allowNextPop.current) { allowNextPop.current = false; setRoute(target); return }
+      if (!hasDirty()) { setRoute(target); return }
+      window.history.pushState({ reactionAtlas: true }, '', routeHref(routeRef.current))
       requestNavigation(() => { allowNextPop.current = true; window.history.back() })
     }
+    const internalNavigate = (event: Event) => { const url = new URL((event as CustomEvent<string>).detail, window.location.origin); apply(parseAppRoute(url.pathname, url.search)) }
     window.addEventListener('popstate', popState)
-    return () => window.removeEventListener('popstate', popState)
+    window.addEventListener('reactionatlas:navigate', internalNavigate)
+    return () => { window.removeEventListener('popstate', popState); window.removeEventListener('reactionatlas:navigate', internalNavigate) }
   }, [apply, hasDirty, requestNavigation])
 
-  const openPage = (page: Page) => navigate({ page, initialIndex: '', initialDrugCode: '', initialStructureCode: '' })
-  const openReaction = (initialIndex: string) => navigate({ page: 'library', initialIndex, initialDrugCode: '', initialStructureCode: '' })
-  const openDrug = (initialDrugCode: string) => navigate({ page: 'drugs', initialIndex: '', initialDrugCode, initialStructureCode: '' })
-  const openStructure = (initialStructureCode: string) => navigate({ page: 'structures', initialIndex: '', initialDrugCode: '', initialStructureCode })
-  const { page, initialIndex, initialDrugCode, initialStructureCode } = destination
+  const openPage = (page: AppPage) => navigate({ page })
+  const openReaction = (code: string) => navigate({ page: 'library', code })
+  const openDrug = (code: string) => navigate({ page: 'drugs', code })
+  const openStructure = (code: string) => navigate({ page: 'structures', code })
+  const { page } = route
 
   return <div className="app-shell">
     <header className="app-header"><button className="brand" onClick={() => openPage('library')}><span>RA</span><strong>ReactionAtlas</strong></button><nav><button className={page === 'library' ? 'active' : ''} onClick={() => openPage('library')}>Reaction Library</button><button className={page === 'collections' ? 'active' : ''} onClick={() => openPage('collections')}>Collections</button><button className={page === 'drugs' ? 'active' : ''} onClick={() => openPage('drugs')}>Drug Database</button><button className={page === 'structures' ? 'active' : ''} onClick={() => openPage('structures')}>Structure Database</button><button className={page === 'settings' ? 'active' : ''} onClick={() => openPage('settings')}>Settings</button></nav><div className="local-badge"><i /> Local database</div></header>
-    {page === 'library' ? <Library initialIndex={initialIndex} onOpenDrug={openDrug} /> : page === 'collections' ? <Collections onOpenReaction={openReaction} /> : page === 'drugs' ? <DrugDatabase initialCode={initialDrugCode} onOpenReaction={openReaction} onOpenStructure={openStructure} /> : page === 'structures' ? <StructureDatabase initialCode={initialStructureCode} onOpenReaction={openReaction} onOpenDrug={openDrug} /> : <Settings />}
+    {page === 'library' ? <Library initialIndex={route.code} deepLink={route.item ? { field: route.field, item: route.item } : undefined} onRouteReaction={(code) => recordRoute({ page: 'library', code })} onOpenDrug={openDrug} />
+      : page === 'collections' ? <Collections initialCollectionId={route.collectionId} targetItemId={route.item} onRouteCollection={(collectionId) => recordRoute({ page: 'collections', collectionId })} onOpenReaction={openReaction} />
+        : page === 'drugs' ? <DrugDatabase initialCode={route.code} targetItemId={route.field === 'description' ? route.item : undefined} onRouteDrug={(code) => recordRoute({ page: 'drugs', code })} onOpenReaction={openReaction} onOpenStructure={openStructure} />
+          : page === 'structures' ? <StructureDatabase initialCode={route.code} onRouteStructure={(code) => recordRoute({ page: 'structures', code })} onOpenReaction={openReaction} onOpenDrug={openDrug} />
+            : <Settings />}
   </div>
 }

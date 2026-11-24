@@ -23,7 +23,7 @@ function inputFromReaction(reaction: Reaction): ReactionInput {
   }
 }
 
-export function ReactionDetail({ reaction, onEdit, onDelete, onSave, onOpenDrug }: { reaction: Reaction; onEdit: () => void; onDelete: () => void; onSave: (data: ReactionRichTextInput) => Promise<Reaction>; onOpenDrug: (code: string) => void }) {
+export function ReactionDetail({ reaction, deepLink, onEdit, onDelete, onSave, onOpenDrug }: { reaction: Reaction; deepLink?: { field?: string; item: string }; onEdit: () => void; onDelete: () => void; onSave: (data: ReactionRichTextInput) => Promise<Reaction>; onOpenDrug: (code: string) => void }) {
   const relations = [...reaction.outgoing_relations.map((item) => ({ ...item, direction: 'outgoing' as const })), ...reaction.incoming_relations.map((item) => ({ ...item, direction: 'incoming' as const }))]
   const initial = inputFromReaction(reaction)
   const [baseline, setBaseline] = useState(initial)
@@ -87,9 +87,10 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave, onOpenDrug 
   return <article className="detail-card">
     <div className="detail-header rich-detail-header"><div className="detail-title-area"><div className="index-line"><span className={`series-label ${reaction.series}`}>{reactionSeriesLabel[reaction.series]}</span><span className="rxn-index large">{reaction.display_code}</span></div><RichEditor heading={1} singleLine placeholder="Reaction name" value={value('name')} onChange={(content) => change('name', content)} /></div><div className="button-row"><button className="secondary" onClick={onEdit}>Edit metadata</button><button className="danger ghost" onClick={onDelete}>Delete</button></div></div>
     {error && <div className="error inline-editor-error">{error}</div>}
+    {deepLink?.field && !['summary', 'notes'].includes(deepLink.field) && <div className="missing-target">The linked document field does not exist.</div>}
     <section className="detail-rich-fields">
       <label>Reaction class<RichEditor singleLine placeholder="Add a reaction class…" value={value('reaction_class')} onChange={(content) => change('reaction_class', content)} /></label>
-      <div className="hierarchical-field"><span>Summary</span><HierarchicalDocumentEditor placeholder="Add a summary…" document={summaryDocument} onChange={(document) => changeDocument('summary', document)} /></div>
+      <div className="hierarchical-field"><span>Summary</span><HierarchicalDocumentEditor placeholder="Add a summary…" document={summaryDocument} targetItemId={deepLink?.field === 'summary' ? deepLink.item : undefined} onChange={(document) => changeDocument('summary', document)} /></div>
     </section>
     {reaction.image && <img className="reaction-hero" src={reaction.image.content_url} alt={`${reaction.name} reaction`} />}
     <div className="role-grid">{groups.map(([role, title]) => {
@@ -100,7 +101,7 @@ export function ReactionDetail({ reaction, onEdit, onDelete, onSave, onOpenDrug 
     {reaction.aliases.length > 0 && <section className="notes"><h3>Aliases</h3><ul className="metadata-list">{reaction.aliases.map((alias) => <li key={alias.id}><strong>{alias.alias}</strong> <span>{alias.alias_type.replace('_', ' ')}</span>{alias.note && <small>{alias.note}</small>}</li>)}</ul></section>}
     {relations.length > 0 && <section className="notes"><h3>Relations</h3><ul className="metadata-list">{relations.map((relation) => <li key={`${relation.direction}-${relation.id}`}>{relation.direction === 'incoming' && <><strong>{relation.source_display_code}</strong> {relation.source_name} </>}<span>{relationLabels[relation.relation_type]}</span>{relation.direction === 'outgoing' ? <><strong>{relation.target_display_code}</strong> {relation.target_name}</> : 'this reaction'}</li>)}</ul></section>}
     <section className="notes"><h3>Linked drugs</h3>{reaction.drug_links.length ? <div className="reaction-drug-links">{reaction.drug_links.map(({ drug }) => <button type="button" key={drug.id} onClick={() => onOpenDrug(drug.display_code)}>{drug.image && <img src={drug.image.content_url} alt="" />}<span><small>{drug.display_code}</small><strong>{drug.name}</strong><em>{drug.chapters.join(' · ') || 'Uncategorized'}</em></span><b>Open →</b></button>)}</div> : <p className="muted compact">No drugs are linked to this reaction.</p>}</section>
-    <section className="notes detail-notes-editor"><h3>Notes</h3><HierarchicalDocumentEditor placeholder="Add notes…" document={notesDocument} onChange={(document) => changeDocument('notes', document)} /></section>
+    <section className="notes detail-notes-editor"><h3>Notes</h3><HierarchicalDocumentEditor placeholder="Add notes…" document={notesDocument} targetItemId={deepLink?.field === 'notes' || !deepLink?.field ? deepLink?.item : undefined} onChange={(document) => changeDocument('notes', document)} /></section>
     {dirty && <div className="inline-save-bar"><span>Unsaved rich-text changes · ⌘S to save</span><button className="secondary" disabled={saving} onClick={discard}>Discard</button><button disabled={saving} onClick={() => void save().catch(() => undefined)}>{saving ? 'Saving…' : 'Save changes'}</button></div>}
   </article>
 }

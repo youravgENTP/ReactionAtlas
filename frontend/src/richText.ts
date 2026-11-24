@@ -4,11 +4,18 @@ import type { LatexShortcut } from './types'
 export function sanitizeRichHtml(html: string) {
   const parsed = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
   const root = parsed.body.firstElementChild!
-  const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'SUB', 'SUP', 'BR', 'DIV', 'SPAN', 'IMG'])
+  const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'SUB', 'SUP', 'BR', 'DIV', 'SPAN', 'IMG', 'A'])
   for (const element of [...root.querySelectorAll('*')]) {
     if (!allowed.has(element.tagName)) { element.replaceWith(...element.childNodes); continue }
     if (element.tagName === 'IMG') {
       sanitizeManagedImage(element as HTMLImageElement)
+      continue
+    }
+    if (element.tagName === 'A') {
+      const href = safeInternalHref(element.getAttribute('href') ?? '')
+      if (!href) { element.replaceWith(...element.childNodes); continue }
+      for (const attribute of [...element.attributes]) element.removeAttribute(attribute.name)
+      element.setAttribute('href', href)
       continue
     }
     for (const attribute of [...element.attributes]) if (attribute.name !== 'style') element.removeAttribute(attribute.name)
@@ -17,6 +24,14 @@ export function sanitizeRichHtml(html: string) {
     if (safe) element.setAttribute('style', safe); else element.removeAttribute('style')
   }
   return root.innerHTML
+}
+
+function safeInternalHref(value: string) {
+  try {
+    const url = new URL(value, 'http://reactionatlas.local')
+    if (url.origin !== 'http://reactionatlas.local' || !/^\/(reactions|drugs|structures|collections)\//.test(url.pathname)) return ''
+    return `${url.pathname}${url.search}`
+  } catch { return '' }
 }
 
 function sanitizeManagedImage(image: HTMLImageElement) {

@@ -5,11 +5,12 @@ import { formatScriptHtml, normalizeScriptNodes, normalizeTextNodes, sanitizeRic
 import type { RichTextValue, StudyBlock, StudyDocument, StudyItem } from './types'
 import { addStudyItemAfter, flattenStudyItems, hierarchyMarker, indentStudyItem, newStudyItem, nextStudyItemId, outdentStudyItem, previousStudyItemId, removeStudyItem, updateStudyItem } from './hierarchy'
 import { newHierarchyBlock, newTextBlock } from './studyDocument'
+import { useInternalLinkPicker } from './InternalLinkPicker'
 
 type ActivePosition = { blockId: string; itemId?: string }
 export interface HierarchyImage { id: string; type: 'image'; media_asset_id: string; width_percent: number; align: 'left' | 'center' | 'right'; anchor_item_id?: string; anchor_side?: 'before' | 'after' }
 
-export function HierarchicalDocumentEditor({ document, placeholder, onChange }: { document: StudyDocument; placeholder?: string; onChange: (document: StudyDocument) => void }) {
+export function HierarchicalDocumentEditor({ document, placeholder, targetItemId, onChange }: { document: StudyDocument; placeholder?: string; targetItemId?: string; onChange: (document: StudyDocument) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [active, setActive] = useState<ActivePosition | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -17,6 +18,17 @@ export function HierarchicalDocumentEditor({ document, placeholder, onChange }: 
   const [error, setError] = useState('')
   const blocks = document.blocks.length ? document.blocks : [newTextBlock()]
   const commit = (next: StudyBlock[]) => onChange({ version: 1, blocks: next })
+  const targetExists = !targetItemId || blocks.some((block) => block.type === 'hierarchy' && flattenStudyItems(block.items).some((item) => item.id === targetItemId))
+
+  useEffect(() => {
+    if (!targetItemId || !targetExists) return
+    const frame = window.requestAnimationFrame(() => {
+      const target = window.document.querySelector<HTMLElement>(`[data-study-item="${targetItemId}"]`)
+      target?.scrollIntoView({ block: 'center', behavior: 'smooth' }); target?.classList.add('deep-link-highlight')
+      if (target) window.setTimeout(() => target.classList.remove('deep-link-highlight'), 3000)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [targetItemId, targetExists])
 
   const updateBlock = (id: string, next: StudyBlock) => commit(blocks.map((block) => block.id === id ? next : block))
   const anchorImage = (imageId: string, itemId: string, side: 'before' | 'after') => commit(blocks.map((block) => block.id === imageId && block.type === 'image' ? { ...block, anchor_item_id: itemId, anchor_side: side } : block))
@@ -86,10 +98,11 @@ export function HierarchicalDocumentEditor({ document, placeholder, onChange }: 
     <div className="study-insert-row"><span>Insert</span><button type="button" onClick={() => insertBlock(newTextBlock())}>Paragraph</button><button type="button" onClick={() => insertBlock(newHierarchyBlock())}>Hierarchy</button><button type="button" disabled={uploading} onClick={() => input.current?.click()}>{uploading ? 'Uploading…' : 'Image'}</button><small>or paste/drop an image</small><input ref={input} hidden type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={(event) => void upload(event.target.files?.[0])} /></div>
     {dragging && <div className="study-image-drop-overlay">Drop image to insert</div>}
     {error && <small className="rich-image-error">{error}</small>}
+    {targetItemId && !targetExists && <div className="missing-target">The linked hierarchy item no longer exists.</div>}
   </div>
 }
 
-export function HierarchyEditor({ items, images = [], onActive = () => undefined, onChange, onImageAnchor = () => undefined, onImageChange = () => undefined, onImageRemove = () => undefined }: { items: StudyItem[]; images?: HierarchyImage[]; onActive?: (id: string) => void; onChange: (items: StudyItem[]) => void; onImageAnchor?: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange?: (image: HierarchyImage) => void; onImageRemove?: (id: string) => void }) {
+export function HierarchyEditor({ items, images = [], targetItemId, onActive = () => undefined, onChange, onImageAnchor = () => undefined, onImageChange = () => undefined, onImageRemove = () => undefined }: { items: StudyItem[]; images?: HierarchyImage[]; targetItemId?: string; onActive?: (id: string) => void; onChange: (items: StudyItem[]) => void; onImageAnchor?: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange?: (image: HierarchyImage) => void; onImageRemove?: (id: string) => void }) {
   const focusNext = useRef<string | undefined>(undefined)
   useEffect(() => {
     if (!focusNext.current) return
@@ -97,6 +110,15 @@ export function HierarchyEditor({ items, images = [], onActive = () => undefined
     if (editor) { editor.focus(); placeCaretAtEnd(editor) }
     focusNext.current = undefined
   }, [items])
+  useEffect(() => {
+    if (!targetItemId) return
+    const frame = window.requestAnimationFrame(() => {
+      const target = window.document.querySelector<HTMLElement>(`[data-study-item="${targetItemId}"]`)
+      target?.scrollIntoView({ block: 'center', behavior: 'smooth' }); target?.classList.add('deep-link-highlight')
+      if (target) window.setTimeout(() => target.classList.remove('deep-link-highlight'), 3000)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [targetItemId])
   const keyAction = (event: KeyboardEvent<HTMLDivElement>, id: string, content: RichTextValue) => {
     const source = updateStudyItem(items, id, content)
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
@@ -151,6 +173,7 @@ function StudyRichInput({ value, multiline = false, editorId, placeholder, onFoc
   }
   const rememberSelection = () => { const selection = window.getSelection(); if (selection?.rangeCount && editor.current?.contains(selection.anchorNode)) savedRange.current = selection.getRangeAt(0).cloneRange() }
   const emit = (includeEnd = false) => { const node = editor.current; if (!node) return; normalizeTextNodes(node, shortcuts, includeEnd); normalizeScriptNodes(node, includeEnd); const next = content(); rememberSelection(); onChange(next) }
+  const links = useInternalLinkPicker(editor, () => emit())
   const command = (name: string, commandValue?: string) => {
     const node = editor.current; if (!node) return
     node.focus({ preventScroll: true })
@@ -160,13 +183,14 @@ function StudyRichInput({ value, multiline = false, editorId, placeholder, onFoc
     window.document.execCommand(name, false, commandValue); emit()
   }
   return <div className={`study-rich-input-wrap ${multiline ? 'multiline' : ''}`}>
-    <div ref={editor} className="study-rich-input" contentEditable role="textbox" aria-multiline={multiline} aria-label={placeholder} suppressContentEditableWarning data-study-item={editorId} data-placeholder={placeholder} onFocus={onFocus} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false; emit() }} onInput={() => { if (!composing.current) emit() }} onBlur={() => { composing.current = false; emit(true) }} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onKeyDown={(event) => {
+    <div ref={editor} className="study-rich-input" contentEditable role="textbox" aria-multiline={multiline} aria-label={placeholder} suppressContentEditableWarning data-study-item={editorId} data-placeholder={placeholder} onFocus={onFocus} onClick={links.handleClick} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false; emit() }} onInput={() => { if (!composing.current) emit() }} onBlur={() => { composing.current = false; emit(true) }} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onKeyDown={(event) => {
       if (event.nativeEvent.isComposing || composing.current) return
+      if (links.openPicker(event)) return
       if ((event.metaKey || event.ctrlKey) && ['b', 'i', 'u'].includes(event.key.toLowerCase())) { event.preventDefault(); command({ b: 'bold', i: 'italic', u: 'underline' }[event.key.toLowerCase()]!); return }
       if (onKeyAction && (event.key === 'Enter' || event.key === 'Tab')) emit(true)
       if (onKeyAction) { onKeyAction(event, content()); if (event.defaultPrevented) return }
     }} />
-    <div className="study-rich-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('bold')} title="Bold"><b>B</b></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('italic')} title="Italic"><i>I</i></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('underline')} title="Underline"><u>U</u></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('superscript')} title="Superscript">x<sup>2</sup></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('subscript')} title="Subscript">x<sub>2</sub></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')} title="Highlight">▰</button><label title="Text color">A<input aria-label="Text color" type="color" onMouseDown={rememberSelection} onChange={(event) => command('foreColor', event.target.value)} /></label>{onRemove && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onRemove} title="Remove item">×</button>}</div>
+    <div className="study-rich-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('bold')} title="Bold"><b>B</b></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('italic')} title="Italic"><i>I</i></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('underline')} title="Underline"><u>U</u></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('superscript')} title="Superscript">x<sup>2</sup></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('subscript')} title="Subscript">x<sub>2</sub></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')} title="Highlight">▰</button><label title="Text color">A<input aria-label="Text color" type="color" onMouseDown={rememberSelection} onChange={(event) => command('foreColor', event.target.value)} /></label>{onRemove && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onRemove} title="Remove item">×</button>}</div>{links.picker}
   </div>
 }
 

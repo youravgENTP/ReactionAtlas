@@ -11,7 +11,7 @@ import { reconcileSavedValue } from './unsavedChangesCore'
 
 const emptyDocument: CollectionDocument = { version: 1, blocks: [] }
 
-export function Collections({ onOpenReaction }: { onOpenReaction: (index: string) => void }) {
+export function Collections({ initialCollectionId, targetItemId, onRouteCollection, onOpenReaction }: { initialCollectionId?: number; targetItemId?: string; onRouteCollection: (id?: number) => void; onOpenReaction: (index: string) => void }) {
   const [collections, setCollections] = useState<Collection[]>([])
   const [active, setActive] = useState<Collection | null>(null)
   const [reactions, setReactions] = useState<Reaction[]>([])
@@ -29,6 +29,11 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
 
   const reload = async () => { try { setCollections(await api.collections()) } catch (e) { setError(e instanceof Error ? e.message : 'Could not load collections') } }
   useEffect(() => { void Promise.all([reload(), api.reactions().then(setReactions)]) }, [])
+  useEffect(() => {
+    if (!initialCollectionId || !collections.length || active?.id === initialCollectionId) return
+    const match = collections.find((collection) => collection.id === initialCollectionId)
+    if (match) setCollection(match); else setActive(null)
+  }, [initialCollectionId, collections])
   const available = useMemo(() => reactions.filter((r) => !active?.reaction_links.some((link) => link.reaction.id === r.id) && `${r.display_code} ${r.name} ${r.aliases.map((alias) => alias.alias).join(' ')}`.toLowerCase().includes(addSearch.toLowerCase())).slice(0, 8), [reactions, active, addSearch])
 
   const create = async () => {
@@ -90,12 +95,12 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
   }
   if (!active) return <div className="collections-index"><div className="index-header"><div><span className="eyebrow">Study sets</span><h1>Collections</h1><p>Group related reactions and build a focused study document.</p></div><button onClick={() => void create()}>+ New collection</button></div>
     {error && <div className="error">{error}</div>}
-    <div className="collection-grid">{collections.map((item) => <button className="collection-card" key={item.id} onClick={() => setCollection(item)}><span className="count">{item.reaction_links.length}</span><h2><FormattedText>{item.title}</FormattedText></h2><p><FormattedText>{item.description || 'No description'}</FormattedText></p><small>Updated {new Date(item.updated_at).toLocaleDateString()}</small></button>)}
+    <div className="collection-grid">{collections.map((item) => <button className="collection-card" key={item.id} onClick={() => { setCollection(item); onRouteCollection(item.id) }}><span className="count">{item.reaction_links.length}</span><h2><FormattedText>{item.title}</FormattedText></h2><p><FormattedText>{item.description || 'No description'}</FormattedText></p><small>Updated {new Date(item.updated_at).toLocaleDateString()}</small></button>)}
       {collections.length === 0 && <div className="empty-state"><span>＋</span><h2>No collections yet</h2><p>Create one to organize reactions for your next study session.</p></div>}
     </div></div>
 
   return <div className="workspace">
-    <div className="workspace-header"><button className="back" onClick={() => requestNavigation(() => setActive(null))}>← Collections</button><div><span className="eyebrow">Study workspace</span><h1><FormattedText>{active.title}</FormattedText></h1></div><div className="button-row"><button className="secondary" onClick={() => void rename()}>Rename</button><button className="danger ghost" onClick={() => requestNavigation(() => void removeCollection())}>Delete</button><button title="Save (⌘S)" disabled={saving || !dirty} onClick={() => void save().catch(() => undefined)}>{saving ? 'Saving…' : 'Save'}</button></div></div>
+    <div className="workspace-header"><button className="back" onClick={() => requestNavigation(() => { setActive(null); onRouteCollection() })}>← Collections</button><div><span className="eyebrow">Study workspace</span><h1><FormattedText>{active.title}</FormattedText></h1></div><div className="button-row"><button className="secondary" onClick={() => void rename()}>Rename</button><button className="danger ghost" onClick={() => requestNavigation(() => void removeCollection())}>Delete</button><button title="Save (⌘S)" disabled={saving || !dirty} onClick={() => void save().catch(() => undefined)}>{saving ? 'Saving…' : 'Save'}</button></div></div>
     {error && <div className="error page-error">{error}</div>}
     <div className="workspace-columns">
       <aside className="reaction-cards"><div className="panel-label">REACTION CARDS · {active.reaction_links.length}</div>
@@ -107,7 +112,7 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
         <div className="add-reaction"><input placeholder="Add reaction by index or name…" value={addSearch} onBlur={(e) => setAddSearch(transform(e.target.value, true))} onChange={(e) => setAddSearch(transform(e.target.value))} />{addSearch && <div className="add-results">{available.map((reaction) => <button key={reaction.id} onClick={() => void add(reaction.id)}><span className="rxn-index">{reaction.display_code}</span>{reaction.name}</button>)}</div>}</div>
       </aside>
       <main className="document-panel"><div className="document-tabs"><strong>Document</strong><span>{document.blocks.length} blocks · rich text and LaTeX shortcuts enabled</span></div>
-        <CollectionDocumentEditor document={document} reactions={active.reaction_links.map((link) => link.reaction)} onChange={setDocument} onOpenReaction={onOpenReaction} />
+        <CollectionDocumentEditor document={document} reactions={active.reaction_links.map((link) => link.reaction)} targetItemId={targetItemId} onChange={setDocument} onOpenReaction={onOpenReaction} />
       </main>
     </div>
   </div>

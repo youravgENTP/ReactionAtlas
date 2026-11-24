@@ -4,8 +4,9 @@ import { RichFormattedText } from './inlineMarkup'
 import type { Structure, StructureImportInput, StructureImportResult } from './types'
 import { useUnsavedChanges } from './UnsavedChanges'
 
-export function StructureDatabase({ initialCode, onOpenReaction, onOpenDrug }: {
+export function StructureDatabase({ initialCode, onRouteStructure, onOpenReaction, onOpenDrug }: {
   initialCode?: string
+  onRouteStructure: (code: string) => void
   onOpenReaction: (code: string) => void
   onOpenDrug: (code: string) => void
 }) {
@@ -27,6 +28,10 @@ export function StructureDatabase({ initialCode, onOpenReaction, onOpenDrug }: {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load structures') }
   }
   useEffect(() => { void load() }, [])
+  useEffect(() => {
+    if (!initialCode || !structures.length) return
+    setSelectedId(structures.find((structure) => structure.display_code.toLowerCase() === initialCode.toLowerCase())?.id ?? null)
+  }, [initialCode, structures])
 
   const categories = useMemo(() => [...new Set(structures.flatMap((structure) => structure.categories))].sort(), [structures])
   const filtered = useMemo(() => {
@@ -63,8 +68,8 @@ export function StructureDatabase({ initialCode, onOpenReaction, onOpenDrug }: {
     {error && <div className="error page-error">{error}</div>}
     {result && <div className="drug-import-result"><strong>Import complete</strong><span>{result.created} created · {result.updated} updated · {result.images_uploaded} images uploaded · {result.reactions_linked} reactions linked · {result.drugs_linked} drugs linked</span>{result.warnings.map((warning, index) => <small key={`${index}-${warning}`}>{warning}</small>)}</div>}
     <div className="drug-layout">
-      <aside className="drug-results"><div className="panel-label">{filtered.length} {filtered.length === 1 ? 'structure' : 'structures'}</div><div className="result-list">{filtered.map((structure) => <button className={`drug-result ${structure.id === selectedId ? 'active' : ''}`} key={structure.id} onClick={() => requestNavigation(() => setSelectedId(structure.id))}>{structure.image_links[0] && <img src={structure.image_links[0].asset.content_url} alt="" />}<span><small className="record-code">{structure.display_code}</small><strong>{structure.name}</strong><em>{structure.categories.join(' · ') || 'Uncategorized'}</em></span></button>)}</div></aside>
-      <main className="drug-detail">{selected ? <StructureDetail structure={selected} onOpenReaction={onOpenReaction} onOpenDrug={onOpenDrug} /> : <StructureEmpty hasStructures={structures.length > 0} />}</main>
+      <aside className="drug-results"><div className="panel-label">{filtered.length} {filtered.length === 1 ? 'structure' : 'structures'}</div><div className="result-list">{filtered.map((structure) => <button className={`drug-result ${structure.id === selectedId ? 'active' : ''}`} key={structure.id} onClick={() => requestNavigation(() => { setSelectedId(structure.id); onRouteStructure(structure.display_code) })}>{structure.image_links[0] && <img src={structure.image_links[0].asset.content_url} alt="" />}<span><small className="record-code">{structure.display_code}</small><strong>{structure.name}</strong><em>{structure.categories.join(' · ') || 'Uncategorized'}</em></span></button>)}</div></aside>
+      <main className="drug-detail">{selected ? <StructureDetail structure={selected} onOpenReaction={onOpenReaction} onOpenDrug={onOpenDrug} /> : initialCode ? <div className="drug-empty"><span>?</span><h2>Structure not found</h2><p>No structure matches <code>{initialCode}</code>.</p></div> : <StructureEmpty hasStructures={structures.length > 0} />}</main>
     </div>
   </div>
 }
