@@ -3,20 +3,10 @@ import { api } from './api'
 import { useLatex } from './latex'
 import type { CollectionBlock, CollectionDocument, Reaction, RichTextValue } from './types'
 import { RichFormattedText } from './inlineMarkup'
-import { tokenizeInlineMarkup } from './scriptMarkup'
-import { formatScriptHtml, sanitizeRichHtml } from './richText'
-
-const id = () => crypto.randomUUID()
-
-export function parseCollectionDocument(source: string): CollectionDocument {
-  try {
-    const parsed = JSON.parse(source) as CollectionDocument
-    if (parsed.version === 1 && Array.isArray(parsed.blocks)) return parsed
-  } catch { /* Legacy Markdown becomes a text block below. */ }
-  return { version: 1, blocks: source ? [{ id: id(), type: 'text', content: { text: source, html: escapeHtml(source).replace(/\n/g, '<br>') } }] : [] }
-}
-
-export function serializeCollectionDocument(document: CollectionDocument) { return JSON.stringify(document) }
+import { formatScriptHtml, normalizeScriptNodes, normalizeTextNodes, sanitizeRichHtml } from './richText'
+import { flattenStudyItems } from './hierarchy'
+import { HierarchyEditor, StudyImage, type HierarchyImage } from './HierarchicalDocumentEditor'
+import { newCollectionBlock } from './collectionDocument'
 
 export function CollectionDocumentEditor({ document, reactions, onChange, onOpenReaction }: {
   document: CollectionDocument
@@ -26,28 +16,38 @@ export function CollectionDocumentEditor({ document, reactions, onChange, onOpen
 }) {
   const blocks = document.blocks
   const commit = (next: CollectionBlock[]) => onChange({ version: 1, blocks: next })
-  const add = (type: CollectionBlock['type']) => {
-    const block: CollectionBlock = type === 'heading' ? { id: id(), type, level: 2, content: { text: '' } }
-      : type === 'text' ? { id: id(), type, content: { text: '' } }
-      : type === 'image' ? { id: id(), type, media_asset_id: '', width_percent: 55, align: 'center' }
-      : type === 'reaction' ? { id: id(), type, reaction_id: reactions[0]?.id ?? null }
-      : { id: id(), type: 'divider' }
-    commit([...blocks, block])
-  }
+  const add = (type: CollectionBlock['type']) => commit([...blocks, newCollectionBlock(type, reactions[0]?.id ?? null)])
   const update = (index: number, block: CollectionBlock) => commit(blocks.map((item, i) => i === index ? block : item))
-  const move = (index: number, amount: number) => {
-    const target = index + amount; if (target < 0 || target >= blocks.length) return
-    const next = [...blocks]; [next[index], next[target]] = [next[target], next[index]]; commit(next)
+  const flow = blocks.filter((block) => block.type !== 'image' || !block.anchor_item_id)
+  const move = (blockId: string, amount: number) => {
+    const flowIndex = flow.findIndex((block) => block.id === blockId); const target = flowIndex + amount
+    if (flowIndex < 0 || target < 0 || target >= flow.length) return
+    const index = blocks.findIndex((block) => block.id === blockId); const targetIndex = blocks.findIndex((block) => block.id === flow[target].id)
+    const next = [...blocks]; [next[index], next[targetIndex]] = [next[targetIndex], next[index]]; commit(next)
   }
+  const remove = (block: CollectionBlock) => {
+    const itemIds = block.type === 'hierarchy' ? new Set(flattenStudyItems(block.items).map((item) => item.id)) : new Set<string>()
+    commit(blocks.filter((candidate) => candidate.id !== block.id && (candidate.type !== 'image' || !candidate.anchor_item_id || !itemIds.has(candidate.anchor_item_id))))
+  }
+  const updateHierarchy = (block: Extract<CollectionBlock, { type: 'hierarchy' }>, items: typeof block.items) => {
+    const remaining = new Set(flattenStudyItems(items).map((item) => item.id))
+    const removed = new Set(flattenStudyItems(block.items).filter((item) => !remaining.has(item.id)).map((item) => item.id))
+    commit(blocks
+      .filter((candidate) => candidate.type !== 'image' || !candidate.anchor_item_id || !removed.has(candidate.anchor_item_id))
+      .map((candidate) => candidate.id === block.id ? { ...block, items } : candidate))
+  }
+  const anchorImage = (imageId: string, itemId: string, side: 'before' | 'after') => commit(blocks.map((block) => block.id === imageId && block.type === 'image' ? { ...block, anchor_item_id: itemId, anchor_side: side } : block))
+  const images = blocks.filter((block): block is Extract<CollectionBlock, { type: 'image' }> => block.type === 'image')
 
   return <div className="block-document">
-    <div className="block-toolbar"><span>Insert</span><button onClick={() => add('heading')}>Heading</button><button onClick={() => add('text')}>Text</button><button onClick={() => add('image')}>Image</button><button disabled={!reactions.length} onClick={() => add('reaction')}>Reaction card</button><button onClick={() => add('divider')}>Divider</button></div>
+    <div className="block-toolbar"><span>Insert</span><button onClick={() => add('heading')}>Heading</button><button onClick={() => add('text')}>Text</button><button onClick={() => add('hierarchy')}>Hierarchy</button><button onClick={() => add('image')}>Image</button><button disabled={!reactions.length} onClick={() => add('reaction')}>Reaction card</button><button onClick={() => add('divider')}>Divider</button></div>
     <div className="document-canvas">
-      {blocks.map((block, index) => <div className={`document-block ${block.type}`} key={block.id} data-block-id={block.id}>
-        <div className="block-controls"><button disabled={index === 0} onClick={() => move(index, -1)}>↑</button><button disabled={index === blocks.length - 1} onClick={() => move(index, 1)}>↓</button><button onClick={() => commit(blocks.filter((_, i) => i !== index))}>×</button></div>
+      {blocks.map((block, index) => block.type === 'image' && block.anchor_item_id ? null : <div className={`document-block ${block.type}`} key={block.id} data-block-id={block.id}>
+        <div className="block-controls"><button disabled={flow[0]?.id === block.id} onClick={() => move(block.id, -1)}>↑</button><button disabled={flow.at(-1)?.id === block.id} onClick={() => move(block.id, 1)}>↓</button><button onClick={() => remove(block)}>×</button></div>
         {block.type === 'heading' && <><select className="heading-level" value={block.level} onChange={(event) => update(index, { ...block, level: Number(event.target.value) as 1 | 2 | 3 })}><option value="1">H1</option><option value="2">H2</option><option value="3">H3</option></select><RichEditor value={block.content} heading={block.level} onChange={(content) => update(index, { ...block, content })} /></>}
         {block.type === 'text' && <RichEditor value={block.content} onChange={(content) => update(index, { ...block, content })} />}
-        {block.type === 'image' && <CollectionImage block={block} onChange={(next) => update(index, next)} />}
+        {block.type === 'hierarchy' && <HierarchyEditor items={block.items} images={images} onChange={(items) => updateHierarchy(block, items)} onImageAnchor={anchorImage} onImageChange={(image: HierarchyImage) => update(indexFor(blocks, image.id), image)} onImageRemove={(imageId) => commit(blocks.filter((item) => item.id !== imageId))} />}
+        {block.type === 'image' && (block.media_asset_id ? <StudyImage block={block} onChange={(next) => update(index, next)} onRemove={() => remove(block)} /> : <CollectionImage block={block} onChange={(next) => update(index, next)} />)}
         {block.type === 'reaction' && <ReactionEmbed block={block} reactions={reactions} onChange={(next) => update(index, next)} onOpenReaction={onOpenReaction} />}
         {block.type === 'divider' && <hr />}
       </div>)}
@@ -55,6 +55,8 @@ export function CollectionDocumentEditor({ document, reactions, onChange, onOpen
     </div>
   </div>
 }
+
+function indexFor(blocks: CollectionBlock[], id: string) { return blocks.findIndex((block) => block.id === id) }
 
 export function RichEditor({ value, heading, singleLine = false, placeholder, allowImages = false, compact = false, editorId, onEditorFocus, onEditorKeyDown, onChange }: { value: RichTextValue; heading?: 1 | 2 | 3; singleLine?: boolean; placeholder?: string; allowImages?: boolean; compact?: boolean; editorId?: string; onEditorFocus?: () => void; onEditorKeyDown?: (event: KeyboardEvent<HTMLDivElement>, value: RichTextValue) => void; onChange: (value: RichTextValue) => void }) {
   const editor = useRef<HTMLDivElement>(null)
@@ -200,74 +202,6 @@ function CollectionImage({ block, onChange }: { block: Extract<CollectionBlock, 
 function ReactionEmbed({ block, reactions, onChange, onOpenReaction }: { block: Extract<CollectionBlock, { type: 'reaction' }>; reactions: Reaction[]; onChange: (block: Extract<CollectionBlock, { type: 'reaction' }>) => void; onOpenReaction: (code: string) => void }) {
   const reaction = reactions.find((item) => item.id === block.reaction_id)
   return <div className="reaction-embed"><select value={block.reaction_id ?? ''} onChange={(e) => onChange({ ...block, reaction_id: Number(e.target.value) || null })}><option value="">Choose a reaction</option>{reactions.map((item) => <option value={item.id} key={item.id}>{item.display_code} — {item.name}</option>)}</select>{reaction && <button className="embedded-card" onClick={() => onOpenReaction(reaction.display_code)}>{reaction.image && <img src={reaction.image.content_url} alt="" />}<span><small>{reaction.display_code}</small><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><em><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></em></span></button>}</div>
-}
-
-export function normalizeTextNodes(root: HTMLElement, shortcuts: import('./types').LatexShortcut[], includeEnd: boolean) {
-  const selection = window.getSelection()
-  const active = Boolean(selection?.rangeCount && selection.isCollapsed && root.contains(selection.anchorNode))
-  const offset = active ? richCaretOffset(root) : 0
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  const replacements = new Map(shortcuts.map((item) => [item.command, item.replacement]))
-  const names = shortcuts.map((item) => item.command).filter(Boolean).sort((a, b) => b.length - a.length).map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-  if (!names) return
-  const regex = new RegExp(`[\\\\₩](${names})${includeEnd ? '(?=$|[\\s.,;:!?()[\\]{}])' : '(?=[\\s.,;:!?()[\\]{}])'}`, 'g')
-  let delta = 0
-  while (walker.nextNode()) {
-    const node = walker.currentNode as Text; const before = node.data
-    const after = before.replace(regex, (_, command: string) => replacements.get(command) ?? command)
-    if (before !== after) { node.data = after; delta += after.length - before.length }
-  }
-  if (active && delta) placeRichCaret(root, Math.max(0, offset + delta))
-}
-
-export function normalizeScriptNodes(root: HTMLElement, includeEnd: boolean) {
-  const selection = window.getSelection()
-  const active = Boolean(selection?.rangeCount && selection.isCollapsed && root.contains(selection.anchorNode))
-  const caret = active ? richCaretOffset(root) : 0
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  const nodes: Text[] = []
-  while (walker.nextNode()) if (!(walker.currentNode.parentElement?.closest('sub, sup'))) nodes.push(walker.currentNode as Text)
-  let sourceOffset = 0
-  let removedBeforeCaret = 0
-  for (const node of nodes) {
-    const source = node.data
-    const tokens = tokenizeInlineMarkup(source, includeEnd)
-    if (tokens.some((token) => token.type !== 'text')) {
-      const fragment = document.createDocumentFragment()
-      for (const token of tokens) {
-        const replacementLength = token.text.length
-        if (active && sourceOffset + token.end <= caret) removedBeforeCaret += (token.end - token.start) - replacementLength
-        if (token.type === 'text') fragment.append(token.text)
-        else { const element = document.createElement(token.type); element.textContent = token.text; fragment.append(element) }
-      }
-      node.replaceWith(fragment)
-    }
-    sourceOffset += source.length
-  }
-  if (active && removedBeforeCaret) placeRichCaret(root, Math.max(0, caret - removedBeforeCaret))
-}
-
-function richCaretOffset(root: HTMLElement) {
-  const selection = window.getSelection(); if (!selection?.rangeCount) return 0
-  const range = selection.getRangeAt(0).cloneRange(); range.selectNodeContents(root); range.setEnd(selection.anchorNode!, selection.anchorOffset)
-  return range.toString().length
-}
-
-function placeRichCaret(root: HTMLElement, offset: number) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let remaining = offset
-  while (walker.nextNode()) {
-    const node = walker.currentNode as Text
-    if (remaining <= node.length) {
-      const range = document.createRange()
-      const script = node.parentElement?.closest('sub, sup')
-      if (remaining === node.length && script && root.contains(script)) range.setStartAfter(script)
-      else range.setStart(node, remaining)
-      range.collapse(true)
-      const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
-      return
-    }
-    remaining -= node.length
-  }
 }
 
 function escapeHtml(value: string) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }

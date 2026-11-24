@@ -271,7 +271,8 @@ export interface StudyDocument { version: 1; blocks: StudyBlock[] }
 export type CollectionBlock =
   | { id: string; type: 'heading'; level: 1 | 2 | 3; content: RichTextValue }
   | { id: string; type: 'text'; content: RichTextValue }
-  | { id: string; type: 'image'; media_asset_id: string; width_percent: number; align: 'left' | 'center' | 'right' }
+  | { id: string; type: 'hierarchy'; items: StudyItem[] }
+  | { id: string; type: 'image'; media_asset_id: string; width_percent: number; align: 'left' | 'center' | 'right'; anchor_item_id?: string; anchor_side?: 'before' | 'after' }
   | { id: string; type: 'reaction'; reaction_id: number | null }
   | { id: string; type: 'divider' }
 

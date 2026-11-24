@@ -1,31 +1,22 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { api } from './api'
-import { normalizeScriptNodes, normalizeTextNodes } from './CollectionDocumentEditor'
 import { useLatex } from './latex'
-import { formatScriptHtml, sanitizeRichHtml } from './richText'
+import { formatScriptHtml, normalizeScriptNodes, normalizeTextNodes, sanitizeRichHtml } from './richText'
 import type { RichTextValue, StudyBlock, StudyDocument, StudyItem } from './types'
 import { addStudyItemAfter, flattenStudyItems, hierarchyMarker, indentStudyItem, newStudyItem, nextStudyItemId, outdentStudyItem, previousStudyItemId, removeStudyItem, updateStudyItem } from './hierarchy'
 import { newHierarchyBlock, newTextBlock } from './studyDocument'
 
 type ActivePosition = { blockId: string; itemId?: string }
-type ImageBlock = Extract<StudyBlock, { type: 'image' }>
+export interface HierarchyImage { id: string; type: 'image'; media_asset_id: string; width_percent: number; align: 'left' | 'center' | 'right'; anchor_item_id?: string; anchor_side?: 'before' | 'after' }
 
 export function HierarchicalDocumentEditor({ document, placeholder, onChange }: { document: StudyDocument; placeholder?: string; onChange: (document: StudyDocument) => void }) {
   const input = useRef<HTMLInputElement>(null)
-  const focusNext = useRef<string | undefined>(undefined)
   const [active, setActive] = useState<ActivePosition | null>(null)
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
   const blocks = document.blocks.length ? document.blocks : [newTextBlock()]
   const commit = (next: StudyBlock[]) => onChange({ version: 1, blocks: next })
-
-  useEffect(() => {
-    if (!focusNext.current) return
-    const editor = window.document.querySelector<HTMLElement>(`[data-study-item="${focusNext.current}"]`)
-    if (editor) { editor.focus(); placeCaretAtEnd(editor) }
-    focusNext.current = undefined
-  }, [document])
 
   const updateBlock = (id: string, next: StudyBlock) => commit(blocks.map((block) => block.id === id ? next : block))
   const anchorImage = (imageId: string, itemId: string, side: 'before' | 'after') => commit(blocks.map((block) => block.id === imageId && block.type === 'image' ? { ...block, anchor_item_id: itemId, anchor_side: side } : block))
@@ -78,7 +69,7 @@ export function HierarchicalDocumentEditor({ document, placeholder, onChange }: 
     void upload(file, hierarchy ? { blockId: hierarchy.id, itemId } : active)
   }
 
-  const images = blocks.filter((block): block is ImageBlock => block.type === 'image')
+  const images = blocks.filter((block): block is HierarchyImage => block.type === 'image')
   const flowIds = blocks.filter((block) => block.type !== 'image' || !block.anchor_item_id).map((block) => block.id)
   return <div className={`study-document-editor ${dragging ? 'dragging' : ''}`} onPaste={pasteImage} onDragOver={(event) => { if ([...event.dataTransfer.items].some((item) => item.type.startsWith('image/'))) { event.preventDefault(); setDragging(true) } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false) }} onDrop={dropImage}>
     <div className="study-document-canvas">
@@ -87,7 +78,7 @@ export function HierarchicalDocumentEditor({ document, placeholder, onChange }: 
         return <div className={`study-flow-block ${block.type}`} key={block.id} onFocusCapture={() => setActive({ blockId: block.id })}>
           {block.type !== 'image' && <BlockControls first={flowIds.indexOf(block.id) === 0} last={flowIds.indexOf(block.id) === flowIds.length - 1} onUp={() => moveBlock(block.id, -1)} onDown={() => moveBlock(block.id, 1)} onRemove={() => removeBlock(block)} />}
           {block.type === 'text' && <StudyRichInput multiline placeholder={placeholder ?? 'Write a paragraph…'} value={block.content} onFocus={() => setActive({ blockId: block.id })} onChange={(content) => updateBlock(block.id, { ...block, content })} />}
-          {block.type === 'hierarchy' && <HierarchyItems block={block} images={images} onActive={(itemId) => setActive({ blockId: block.id, itemId })} onChange={(items) => updateHierarchy(block.id, items)} onImageAnchor={anchorImage} onImageChange={(image) => updateBlock(image.id, image)} onImageRemove={(id) => commit(blocks.filter((item) => item.id !== id))} focusNext={focusNext} />}
+          {block.type === 'hierarchy' && <HierarchyEditor items={block.items} images={images} onActive={(itemId) => setActive({ blockId: block.id, itemId })} onChange={(items) => updateHierarchy(block.id, items)} onImageAnchor={anchorImage} onImageChange={(image) => updateBlock(image.id, image)} onImageRemove={(id) => commit(blocks.filter((item) => item.id !== id))} />}
           {block.type === 'image' && <StudyImage block={block} onChange={(image) => updateBlock(block.id, image)} onRemove={() => removeBlock(block)} />}
         </div>
       })}
@@ -98,9 +89,16 @@ export function HierarchicalDocumentEditor({ document, placeholder, onChange }: 
   </div>
 }
 
-function HierarchyItems({ block, images, onActive, onChange, onImageAnchor, onImageChange, onImageRemove, focusNext }: { block: Extract<StudyBlock, { type: 'hierarchy' }>; images: ImageBlock[]; onActive: (id: string) => void; onChange: (items: StudyItem[]) => void; onImageAnchor: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange: (image: ImageBlock) => void; onImageRemove: (id: string) => void; focusNext: MutableRefObject<string | undefined> }) {
+export function HierarchyEditor({ items, images = [], onActive = () => undefined, onChange, onImageAnchor = () => undefined, onImageChange = () => undefined, onImageRemove = () => undefined }: { items: StudyItem[]; images?: HierarchyImage[]; onActive?: (id: string) => void; onChange: (items: StudyItem[]) => void; onImageAnchor?: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange?: (image: HierarchyImage) => void; onImageRemove?: (id: string) => void }) {
+  const focusNext = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!focusNext.current) return
+    const editor = window.document.querySelector<HTMLElement>(`[data-study-item="${focusNext.current}"]`)
+    if (editor) { editor.focus(); placeCaretAtEnd(editor) }
+    focusNext.current = undefined
+  }, [items])
   const keyAction = (event: KeyboardEvent<HTMLDivElement>, id: string, content: RichTextValue) => {
-    const source = updateStudyItem(block.items, id, content)
+    const source = updateStudyItem(items, id, content)
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       const targetId = event.key === 'ArrowUp' ? previousStudyItemId(source, id) : nextStudyItemId(source, id)
       if (!targetId) return
@@ -108,15 +106,16 @@ function HierarchyItems({ block, images, onActive, onChange, onImageAnchor, onIm
     }
     if (event.key === 'Tab') { event.preventDefault(); onChange(event.shiftKey ? outdentStudyItem(source, id) : indentStudyItem(source, id)); return }
     if (event.key === 'Enter') { event.preventDefault(); const item = newStudyItem(); focusNext.current = item.id; onChange(addStudyItemAfter(source, id, item)); return }
-    if (event.key === 'Backspace' && !content.text && block.items.length) {
-      const previous = previousStudyItemId(source, id); if (!previous) return
+    if (event.key === 'Backspace' && !content.text && items.length) {
+      const previous = previousStudyItemId(source, id)
       event.preventDefault(); focusNext.current = previous; onChange(removeStudyItem(source, id))
     }
   }
-  return <div className="hierarchy-editor"><HierarchyRows items={block.items} depth={0} images={images} onActive={onActive} onChange={(id, content) => onChange(updateStudyItem(block.items, id, content))} onKeyAction={keyAction} onRemove={(id) => onChange(removeStudyItem(block.items, id))} onImageAnchor={onImageAnchor} onImageChange={onImageChange} onImageRemove={onImageRemove} /></div>
+  const addFirst = () => { const item = newStudyItem(); focusNext.current = item.id; onChange([item]) }
+  return <div className="hierarchy-editor">{items.length ? <HierarchyRows items={items} depth={0} images={images} onActive={onActive} onChange={(id, content) => onChange(updateStudyItem(items, id, content))} onKeyAction={keyAction} onRemove={(id) => onChange(removeStudyItem(items, id))} onImageAnchor={onImageAnchor} onImageChange={onImageChange} onImageRemove={onImageRemove} /> : <button type="button" className="hierarchy-empty-add" onClick={addFirst}>+ Add list item</button>}</div>
 }
 
-function HierarchyRows({ items, depth, images, onActive, onChange, onKeyAction, onRemove, onImageAnchor, onImageChange, onImageRemove }: { items: StudyItem[]; depth: number; images: ImageBlock[]; onActive: (id: string) => void; onChange: (id: string, content: RichTextValue) => void; onKeyAction: (event: KeyboardEvent<HTMLDivElement>, id: string, content: RichTextValue) => void; onRemove: (id: string) => void; onImageAnchor: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange: (image: ImageBlock) => void; onImageRemove: (id: string) => void }) {
+function HierarchyRows({ items, depth, images, onActive, onChange, onKeyAction, onRemove, onImageAnchor, onImageChange, onImageRemove }: { items: StudyItem[]; depth: number; images: HierarchyImage[]; onActive: (id: string) => void; onChange: (id: string, content: RichTextValue) => void; onKeyAction: (event: KeyboardEvent<HTMLDivElement>, id: string, content: RichTextValue) => void; onRemove: (id: string) => void; onImageAnchor: (imageId: string, itemId: string, side: 'before' | 'after') => void; onImageChange: (image: HierarchyImage) => void; onImageRemove: (id: string) => void }) {
   return <>{items.map((item, index) => {
     const before = images.filter((image) => image.anchor_item_id === item.id && image.anchor_side === 'before')
     const after = images.filter((image) => image.anchor_item_id === item.id && image.anchor_side !== 'before')
@@ -171,7 +170,7 @@ function StudyRichInput({ value, multiline = false, editorId, placeholder, onFoc
   </div>
 }
 
-function StudyImage({ block, onChange, onRemove }: { block: ImageBlock; onChange: (block: ImageBlock) => void; onRemove: () => void }) {
+export function StudyImage({ block, onChange, onRemove }: { block: HierarchyImage; onChange: (block: HierarchyImage) => void; onRemove: () => void }) {
   const beginResize = (event: ReactPointerEvent<HTMLButtonElement>, side: 'left' | 'right') => {
     event.preventDefault(); event.stopPropagation()
     const figure = event.currentTarget.closest('figure'); const containerWidth = figure?.parentElement?.clientWidth || 1

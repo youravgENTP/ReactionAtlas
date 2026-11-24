@@ -1,4 +1,5 @@
 import { tokenizeInlineMarkup } from './scriptMarkup'
+import type { LatexShortcut } from './types'
 
 export function sanitizeRichHtml(html: string) {
   const parsed = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
@@ -75,5 +76,73 @@ function repairMalformedScriptElements(root: Element, parsed: Document) {
     }
     element.textContent = content
     if (trailing) element.after(parsed.createTextNode(trailing))
+  }
+}
+
+export function normalizeTextNodes(root: HTMLElement, shortcuts: LatexShortcut[], includeEnd: boolean) {
+  const selection = window.getSelection()
+  const active = Boolean(selection?.rangeCount && selection.isCollapsed && root.contains(selection.anchorNode))
+  const offset = active ? richCaretOffset(root) : 0
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const replacements = new Map(shortcuts.map((item) => [item.command, item.replacement]))
+  const names = shortcuts.map((item) => item.command).filter(Boolean).sort((a, b) => b.length - a.length).map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+  if (!names) return
+  const regex = new RegExp(`[\\\\₩](${names})${includeEnd ? '(?=$|[\\s.,;:!?()[\\]{}])' : '(?=[\\s.,;:!?()[\\]{}])'}`, 'g')
+  let delta = 0
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text; const before = node.data
+    const after = before.replace(regex, (_, command: string) => replacements.get(command) ?? command)
+    if (before !== after) { node.data = after; delta += after.length - before.length }
+  }
+  if (active && delta) placeRichCaret(root, Math.max(0, offset + delta))
+}
+
+export function normalizeScriptNodes(root: HTMLElement, includeEnd: boolean) {
+  const selection = window.getSelection()
+  const active = Boolean(selection?.rangeCount && selection.isCollapsed && root.contains(selection.anchorNode))
+  const caret = active ? richCaretOffset(root) : 0
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const nodes: Text[] = []
+  while (walker.nextNode()) if (!(walker.currentNode.parentElement?.closest('sub, sup'))) nodes.push(walker.currentNode as Text)
+  let sourceOffset = 0
+  let removedBeforeCaret = 0
+  for (const node of nodes) {
+    const source = node.data
+    const tokens = tokenizeInlineMarkup(source, includeEnd)
+    if (tokens.some((token) => token.type !== 'text')) {
+      const fragment = document.createDocumentFragment()
+      for (const token of tokens) {
+        const replacementLength = token.text.length
+        if (active && sourceOffset + token.end <= caret) removedBeforeCaret += (token.end - token.start) - replacementLength
+        if (token.type === 'text') fragment.append(token.text)
+        else { const element = document.createElement(token.type); element.textContent = token.text; fragment.append(element) }
+      }
+      node.replaceWith(fragment)
+    }
+    sourceOffset += source.length
+  }
+  if (active && removedBeforeCaret) placeRichCaret(root, Math.max(0, caret - removedBeforeCaret))
+}
+
+function richCaretOffset(root: HTMLElement) {
+  const selection = window.getSelection(); if (!selection?.rangeCount) return 0
+  const range = selection.getRangeAt(0).cloneRange(); range.selectNodeContents(root); range.setEnd(selection.anchorNode!, selection.anchorOffset)
+  return range.toString().length
+}
+
+function placeRichCaret(root: HTMLElement, offset: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let remaining = offset
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text
+    if (remaining <= node.length) {
+      const range = document.createRange()
+      const script = node.parentElement?.closest('sub, sup')
+      if (remaining === node.length && script && root.contains(script)) range.setStartAfter(script)
+      else range.setStart(node, remaining)
+      range.collapse(true)
+      const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
+      return
+    }
+    remaining -= node.length
   }
 }

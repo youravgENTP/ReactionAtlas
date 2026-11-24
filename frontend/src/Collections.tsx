@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
-import { CollectionDocumentEditor, parseCollectionDocument, serializeCollectionDocument } from './CollectionDocumentEditor'
+import { CollectionDocumentEditor } from './CollectionDocumentEditor'
+import { parseCollectionDocument, serializeCollectionDocument } from './collectionDocument'
 import { useLatex } from './latex'
 import { FormattedText, RichFormattedText } from './inlineMarkup'
 import type { Collection, CollectionDocument, Reaction } from './types'
