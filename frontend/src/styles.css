@@ -140,6 +140,12 @@ textarea { resize: vertical; line-height: 1.45; }
 .image-picker { display: inline-block; text-transform: none; color: #29312d; cursor: pointer; }
 .input-syntax-help { margin: 10px 0 0; color: #777f7a; font-size: 11px; }.input-syntax-help code { padding: 1px 4px; border-radius: 3px; background: #eef1ef; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.unsaved-backdrop { z-index: 100; }
+.unsaved-modal { width: min(470px, 92vw); background: #fff; border-radius: 8px; box-shadow: 0 20px 70px rgb(0 0 0 / 28%); padding: 26px; }
+.unsaved-modal h2 { font-family: Georgia, serif; font-weight: 500; margin: 4px 0 10px; }
+.unsaved-modal p { color: var(--muted); margin: 0 0 16px; }
+.unsaved-modal ul { margin: 0 0 16px; padding-left: 22px; color: var(--muted); }
+.unsaved-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
 .error { border: 1px solid #e2aaa6; background: #fff0ef; color: #8c302c; border-radius: 5px; padding: 9px 12px; margin-bottom: 14px; font-size: 13px; }
 .page-error { margin: 10px 24px 0; }
 .muted { color: #7b827e; }.compact { font-size: 12px; margin: 7px 0 0; }

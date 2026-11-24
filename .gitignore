@@ -32,3 +32,6 @@ structure-images/*/
 
 # Logs
 *.log
+
+# Local backup archives and snapshots
+/backups/

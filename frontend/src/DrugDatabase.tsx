@@ -4,6 +4,8 @@ import { HierarchicalDocumentEditor } from './HierarchicalDocumentEditor'
 import { RichFormattedText } from './inlineMarkup'
 import { parseStudyDocument, serializeStudyDocument, studyDocumentText } from './studyDocument'
 import type { Drug, DrugImportInput, DrugImportResult, Reaction, StudyDocument } from './types'
+import { useUnsavedChanges, useUnsavedEditor } from './UnsavedChanges'
+import { reconcileSavedValue } from './unsavedChangesCore'
 
 const sidebarPreferenceKey = 'reactionAtlas.drugs.sidebarCollapsed'
 const chapterCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
@@ -23,6 +25,7 @@ export function DrugDatabase({ initialCode, onOpenReaction, onOpenStructure }: {
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(() => new Set(['']))
   const knownChapters = useRef(new Set<string>())
   const fileInput = useRef<HTMLInputElement>(null)
+  const { requestNavigation, hasDirty } = useUnsavedChanges()
 
   const load = async () => {
     try {
@@ -49,7 +52,12 @@ export function DrugDatabase({ initialCode, onOpenReaction, onOpenStructure }: {
       && (!drugFunction || drug.functions.includes(drugFunction))
       && (!term || [drug.display_code, drug.name, drug.slug, drug.description ?? '', ...drug.aliases, ...drug.chapters, ...drug.functions].join(' ').toLocaleLowerCase().includes(term)))
   }, [drugs, search, chapter, drugFunction])
-  useEffect(() => { setSelectedId((current) => filtered.some((drug) => drug.id === current) ? current : filtered[0]?.id ?? null) }, [filtered])
+  useEffect(() => {
+    if (filtered.some((drug) => drug.id === selectedId)) return
+    if (hasDirty()) return
+    const next = filtered[0]?.id ?? null
+    if (next !== selectedId) requestNavigation(() => setSelectedId(next))
+  }, [filtered, selectedId, requestNavigation, hasDirty])
   const selected = drugs.find((drug) => drug.id === selectedId) ?? null
   const visibleChapters = chapter ? [chapter] : chapters
   const groups = visibleChapters.map((name) => ({ name, drugs: filtered.filter((drug) => drug.chapters.includes(name)) })).filter((group) => group.drugs.length)
@@ -88,9 +96,9 @@ export function DrugDatabase({ initialCode, onOpenReaction, onOpenStructure }: {
       <aside className="drug-results" aria-hidden={sidebarCollapsed}><div className="panel-label">{filtered.length} {filtered.length === 1 ? 'drug' : 'drugs'}</div><div className="drug-tree result-list">
         {groups.map((group) => {
           const expanded = searching || expandedChapters.has(group.name)
-          return <section className="drug-tree-chapter" key={group.name}><button type="button" className="drug-tree-heading" aria-expanded={expanded} onClick={() => toggleChapter(group.name)}><span aria-hidden="true">{expanded ? '⌄' : '›'}</span><strong>{group.name}</strong><small>{group.drugs.length}</small></button>{expanded && <div>{group.drugs.map((drug) => <DrugTreeItem drug={drug} selected={drug.id === selectedId} key={`${group.name}-${drug.id}`} onSelect={setSelectedId} />)}</div>}</section>
+          return <section className="drug-tree-chapter" key={group.name}><button type="button" className="drug-tree-heading" aria-expanded={expanded} onClick={() => toggleChapter(group.name)}><span aria-hidden="true">{expanded ? '⌄' : '›'}</span><strong>{group.name}</strong><small>{group.drugs.length}</small></button>{expanded && <div>{group.drugs.map((drug) => <DrugTreeItem drug={drug} selected={drug.id === selectedId} key={`${group.name}-${drug.id}`} onSelect={(id) => requestNavigation(() => setSelectedId(id))} />)}</div>}</section>
         })}
-        {uncategorized.length > 0 && <section className="drug-tree-chapter"><button type="button" className="drug-tree-heading" aria-expanded={searching || expandedChapters.has('')} onClick={() => toggleChapter('')}><span aria-hidden="true">{searching || expandedChapters.has('') ? '⌄' : '›'}</span><strong>Uncategorized</strong><small>{uncategorized.length}</small></button>{(searching || expandedChapters.has('')) && <div>{uncategorized.map((drug) => <DrugTreeItem drug={drug} selected={drug.id === selectedId} key={`uncategorized-${drug.id}`} onSelect={setSelectedId} />)}</div>}</section>}
+        {uncategorized.length > 0 && <section className="drug-tree-chapter"><button type="button" className="drug-tree-heading" aria-expanded={searching || expandedChapters.has('')} onClick={() => toggleChapter('')}><span aria-hidden="true">{searching || expandedChapters.has('') ? '⌄' : '›'}</span><strong>Uncategorized</strong><small>{uncategorized.length}</small></button>{(searching || expandedChapters.has('')) && <div>{uncategorized.map((drug) => <DrugTreeItem drug={drug} selected={drug.id === selectedId} key={`uncategorized-${drug.id}`} onSelect={(id) => requestNavigation(() => setSelectedId(id))} />)}</div>}</section>}
       </div></aside>
       <button type="button" className="library-sidebar-toggle drug-sidebar-toggle" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? '>>' : '<<'}</button>
       <main className="drug-detail">{selected ? <DrugDetail drug={selected} onChange={updateDrug} onOpenReaction={onOpenReaction} onOpenStructure={onOpenStructure} /> : <DrugEmpty hasDrugs={drugs.length > 0} />}</main>
@@ -108,13 +116,19 @@ function DrugDetail({ drug, onChange, onOpenReaction, onOpenStructure }: { drug:
   const [candidates, setCandidates] = useState<Reaction[]>([])
   const [mappingError, setMappingError] = useState('')
   const [busy, setBusy] = useState(false)
-  const originalDescriptionDocument = useMemo(() => parseStudyDocument(drug.description_document, { text: drug.description ?? '' }), [drug.id, drug.updated_at, drug.description_document, drug.description])
-  const [descriptionDocument, setDescriptionDocument] = useState<StudyDocument>(originalDescriptionDocument)
+  const serverDocument = useMemo(() => parseStudyDocument(drug.description_document, { text: drug.description ?? '' }), [drug.id, drug.updated_at, drug.description_document, drug.description])
+  const [descriptionBaseline, setDescriptionBaseline] = useState<StudyDocument>(serverDocument)
+  const [descriptionDocument, setDescriptionDocument] = useState<StudyDocument>(serverDocument)
   const [descriptionSaving, setDescriptionSaving] = useState(false)
   const [descriptionError, setDescriptionError] = useState('')
-  const descriptionDirty = serializeStudyDocument(descriptionDocument) !== serializeStudyDocument(originalDescriptionDocument)
+  const descriptionEntityId = useRef(drug.id)
+  const descriptionSaveInFlight = useRef<Promise<void> | null>(null)
+  const descriptionDirty = serializeStudyDocument(descriptionDocument) !== serializeStudyDocument(descriptionBaseline)
   useEffect(() => { setLinking(false); setReactionSearch(''); setCandidates([]); setMappingError('') }, [drug.id])
-  useEffect(() => { setDescriptionDocument(originalDescriptionDocument); setDescriptionError('') }, [originalDescriptionDocument])
+  useEffect(() => {
+    if (descriptionEntityId.current !== drug.id) { descriptionEntityId.current = drug.id; setDescriptionBaseline(serverDocument); setDescriptionDocument(serverDocument); setDescriptionError(''); return }
+    if (!descriptionDirty && !descriptionSaving) { setDescriptionBaseline(serverDocument); setDescriptionDocument(serverDocument) }
+  }, [drug.id, drug.updated_at])
   useEffect(() => {
     if (!linking) return
     const timer = window.setTimeout(async () => {
@@ -137,15 +151,28 @@ function DrugDetail({ drug, onChange, onOpenReaction, onOpenStructure }: { drug:
     const ids = drug.reaction_links.map((link) => link.reaction.id); [ids[index], ids[target]] = [ids[target], ids[index]]
     void mutate(() => api.reorderDrugReactions(drug.id, ids))
   }
-  const saveDescription = async () => {
-    setDescriptionSaving(true); setDescriptionError('')
-    try { onChange(await api.updateDrugDescription(drug.id, studyDocumentText(descriptionDocument) || null, serializeStudyDocument(descriptionDocument))) }
-    catch (cause) { setDescriptionError(cause instanceof Error ? cause.message : 'Could not save description') }
-    finally { setDescriptionSaving(false) }
+  const saveDescription = () => {
+    if (descriptionSaveInFlight.current) return descriptionSaveInFlight.current
+    const captured = descriptionDocument; const capturedSerialized = serializeStudyDocument(captured)
+    const operation = (async () => {
+      setDescriptionSaving(true); setDescriptionError('')
+      try {
+        const saved = await api.updateDrugDescription(drug.id, studyDocumentText(captured) || null, capturedSerialized)
+        const savedBaseline = parseStudyDocument(saved.description_document, { text: saved.description ?? '' })
+        setDescriptionBaseline(savedBaseline)
+        setDescriptionDocument((current) => reconcileSavedValue(current, capturedSerialized, savedBaseline, serializeStudyDocument))
+        onChange(saved)
+      } catch (cause) { const message = cause instanceof Error ? cause.message : 'Could not save description'; setDescriptionError(message); throw cause instanceof Error ? cause : new Error(message) }
+      finally { setDescriptionSaving(false); descriptionSaveInFlight.current = null }
+    })()
+    descriptionSaveInFlight.current = operation
+    return operation
   }
+  const discardDescription = () => { setDescriptionDocument(descriptionBaseline); setDescriptionError('') }
+  useUnsavedEditor({ id: `drug:${drug.id}:description`, label: `${drug.display_code} description`, dirty: descriptionDirty, saving: descriptionSaving, save: saveDescription, discard: discardDescription })
   return <article className="drug-record"><span className="eyebrow">Drug record · {drug.display_code}</span><h1>{drug.name}</h1>{drug.aliases.length > 0 && <p className="drug-aliases">Also known as {drug.aliases.join(', ')}</p>}
     <div className="drug-tags">{drug.chapters.map((item) => <span className="chapter" key={`chapter-${item}`}>{item}</span>)}{drug.functions.map((item) => <span key={`function-${item}`}>{item}</span>)}</div>
-    <section className="drug-description-editor"><h2>Description</h2><HierarchicalDocumentEditor placeholder="Add a drug description…" document={descriptionDocument} onChange={setDescriptionDocument} />{descriptionError && <div className="error mapping-error">{descriptionError}</div>}{descriptionDirty && <div className="inline-save-bar drug-description-save"><span>Unsaved description changes</span><button type="button" className="secondary" disabled={descriptionSaving} onClick={() => setDescriptionDocument(originalDescriptionDocument)}>Discard</button><button type="button" disabled={descriptionSaving} onClick={() => void saveDescription()}>{descriptionSaving ? 'Saving…' : 'Save description'}</button></div>}</section>
+    <section className="drug-description-editor"><h2>Description</h2><HierarchicalDocumentEditor placeholder="Add a drug description…" document={descriptionDocument} onChange={setDescriptionDocument} />{descriptionError && <div className="error mapping-error">{descriptionError}</div>}{descriptionDirty && <div className="inline-save-bar drug-description-save"><span>Unsaved description changes</span><button type="button" className="secondary" disabled={descriptionSaving} onClick={discardDescription}>Discard</button><button type="button" disabled={descriptionSaving} onClick={() => void saveDescription().catch(() => undefined)}>{descriptionSaving ? 'Saving…' : 'Save description'}</button></div>}</section>
     {drug.image_links.length > 0 && <section><h2>Images</h2><div className="drug-gallery">{drug.image_links.map((image) => <figure key={image.id}><img src={image.asset.content_url} alt={`${drug.name} — ${image.asset.original_filename}`} /><figcaption>{image.asset.original_filename}</figcaption></figure>)}</div></section>}
     <section><div className="section-heading mapping-heading"><h2>Synthesis reactions</h2><button type="button" className="secondary" onClick={() => setLinking((current) => !current)}>{linking ? 'Close' : '+ Link reaction'}</button></div>
       {linking && <div className="reaction-link-picker"><input autoFocus aria-label="Search reactions to link" placeholder="Search Rxn code, name, or class…" value={reactionSearch} onChange={(event) => setReactionSearch(event.target.value)} />{available.length ? <div className="reaction-link-results">{available.map((reaction) => <button type="button" disabled={busy} key={reaction.id} onClick={() => void mutate(() => api.linkDrugReaction(drug.id, reaction.id))}><small>{reaction.display_code}</small><span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><em><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></em></span><b>Link</b></button>)}</div> : <p className="muted compact">No unlinked reactions match.</p>}</div>}

@@ -1,8 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from './api'
 import type { Component, ComponentInput, Reaction, ReactionInput, ReactionSeries, ReactionStatus, Role } from './types'
 import { useLatex } from './latex'
 import { reactionDisplayCode } from './reactionSeries'
+import { useUnsavedChanges, useUnsavedEditor } from './UnsavedChanges'
+import { reconcileSavedValue } from './unsavedChangesCore'
 
 const roles: Role[] = ['reactant', 'product', 'reagent', 'catalyst', 'solvent', 'condition', 'other']
 const empty: ReactionInput = { series: 'general', number: 1, name: '', slug: '', summary: '', reaction_class: '', status: 'active', notes: '', components: [], image_asset_id: null, rich_text: {} }
@@ -26,14 +28,26 @@ interface Props {
 }
 
 export function ReactionForm({ reaction, onSave, onClose }: Props) {
-  const [form, setForm] = useState<ReactionInput>(() => fromReaction(reaction))
+  const initial = fromReaction(reaction)
+  const [form, setForm] = useState<ReactionInput>(initial)
+  const [baseline, setBaseline] = useState<ReactionInput>(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [knownComponents, setKnownComponents] = useState<Component[]>([])
   const [imageUrl, setImageUrl] = useState(reaction?.image?.content_url ?? '')
+  const [baselineImageUrl, setBaselineImageUrl] = useState(reaction?.image?.content_url ?? '')
   const [uploading, setUploading] = useState(false)
   const { transform } = useLatex()
-  useEffect(() => { setForm(fromReaction(reaction)); setImageUrl(reaction?.image?.content_url ?? '') }, [reaction])
+  const { requestNavigation } = useUnsavedChanges()
+  const saveInFlight = useRef<Promise<void> | null>(null)
+  const entityId = useRef(reaction?.id)
+  const dirty = JSON.stringify(form) !== JSON.stringify(baseline)
+  useEffect(() => {
+    if (entityId.current === reaction?.id || dirty || busy) return
+    entityId.current = reaction?.id
+    const next = fromReaction(reaction); const nextImage = reaction?.image?.content_url ?? ''
+    setForm(next); setBaseline(next); setImageUrl(nextImage); setBaselineImageUrl(nextImage); setError('')
+  }, [reaction?.id])
   useEffect(() => { void api.components().then(setKnownComponents).catch(() => undefined) }, [])
 
   const field = (key: keyof ReactionInput, value: string | number) => setForm({ ...form, [key]: value })
@@ -48,13 +62,28 @@ export function ReactionForm({ reaction, onSave, onClose }: Props) {
     }
     setForm({ ...form, components })
   }
-  const submit = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!form.name.trim()) { setError('Reaction name is required'); return }
-    setBusy(true); setError('')
-    try { await onSave(form) } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to save') }
-    finally { setBusy(false) }
+  const save = () => {
+    if (saveInFlight.current) return saveInFlight.current
+    if (!form.name.trim()) { const cause = new Error('Reaction name is required'); setError(cause.message); return Promise.reject(cause) }
+    const captured = form; const capturedSerialized = JSON.stringify(captured); const capturedImageUrl = imageUrl
+    const operation = (async () => {
+      setBusy(true); setError('')
+      try {
+        await onSave(captured)
+        setBaseline(captured); setBaselineImageUrl(capturedImageUrl)
+        setForm((current) => reconcileSavedValue(current, capturedSerialized, captured, JSON.stringify))
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : 'Unable to save'
+        setError(message); throw cause instanceof Error ? cause : new Error(message)
+      } finally { setBusy(false); saveInFlight.current = null }
+    })()
+    saveInFlight.current = operation
+    return operation
   }
+  const submit = (event: FormEvent) => { event.preventDefault(); void save().catch(() => undefined) }
+  const discard = () => { setForm(baseline); setImageUrl(baselineImageUrl); setError('') }
+  const close = () => requestNavigation(onClose)
+  useUnsavedEditor({ id: `reaction-form:${reaction?.id ?? 'new'}`, label: reaction ? `${reaction.display_code} reaction record` : 'New reaction record', dirty, saving: busy, save, discard })
   const uploadImage = async (file?: File) => {
     if (!file) return; setUploading(true); setError('')
     try { const asset = await api.uploadImage(file); setForm((current) => ({ ...current, image_asset_id: asset.id })); setImageUrl(asset.content_url) }
@@ -67,9 +96,9 @@ export function ReactionForm({ reaction, onSave, onClose }: Props) {
     setForm({ ...form, [key]: transform(value, includeEnd), rich_text: richText })
   }
 
-  return <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+  return <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
     <form className="modal" onSubmit={submit}>
-      <div className="modal-title"><div><span className="eyebrow">Reaction record</span><h2>{reaction ? 'Edit reaction' : 'New reaction'}</h2></div><button type="button" className="icon-button" onClick={onClose}>×</button></div>
+      <div className="modal-title"><div><span className="eyebrow">Reaction record</span><h2>{reaction ? 'Edit reaction' : 'New reaction'}</h2></div><button type="button" className="icon-button" onClick={close}>×</button></div>
       {error && <div className="error">{error}</div>}
       <div className="form-grid">
         <label>Series<select value={form.series} onChange={(e) => field('series', e.target.value as ReactionSeries)}><option value="general">General</option><option value="special">Named reaction</option><option value="scaffold">Scaffold-specific</option></select></label>
@@ -96,7 +125,7 @@ export function ReactionForm({ reaction, onSave, onClose }: Props) {
         <label className="wide">Notes<textarea rows={3} value={form.notes ?? ''} onBlur={(e) => plainTextChange('notes', e.target.value, true)} onChange={(e) => plainTextChange('notes', e.target.value)} /></label>
       </div>
       <p className="input-syntax-help">Formatting: <code>_&#123;text&#125;</code> or <code>_x</code> for subscript · <code>^&#123;text&#125;</code> or <code>^x</code> for superscript</p>
-      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button disabled={busy}>{busy ? 'Saving…' : 'Save reaction'}</button></div>
+      <div className="modal-actions"><button type="button" className="secondary" onClick={close}>Cancel</button><button disabled={busy}>{busy ? 'Saving…' : 'Save reaction'}</button></div>
     </form>
   </div>
 }

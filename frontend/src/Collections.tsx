@@ -1,51 +1,85 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
 import { CollectionDocumentEditor, parseCollectionDocument, serializeCollectionDocument } from './CollectionDocumentEditor'
 import { useLatex } from './latex'
 import { FormattedText, RichFormattedText } from './inlineMarkup'
 import type { Collection, CollectionDocument, Reaction } from './types'
 import { reactionSeriesLabel } from './reactionSeries'
+import { useUnsavedChanges, useUnsavedEditor } from './UnsavedChanges'
+import { reconcileSavedValue } from './unsavedChangesCore'
+
+const emptyDocument: CollectionDocument = { version: 1, blocks: [] }
 
 export function Collections({ onOpenReaction }: { onOpenReaction: (index: string) => void }) {
   const [collections, setCollections] = useState<Collection[]>([])
   const [active, setActive] = useState<Collection | null>(null)
   const [reactions, setReactions] = useState<Reaction[]>([])
-  const [document, setDocument] = useState<CollectionDocument>({ version: 1, blocks: [] })
+  const [document, setDocument] = useState<CollectionDocument>(emptyDocument)
+  const [baseline, setBaseline] = useState<CollectionDocument>(emptyDocument)
+  const [saving, setSaving] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [error, setError] = useState('')
   const { transform } = useLatex()
+  const { requestNavigation } = useUnsavedChanges()
+  const saveInFlight = useRef<Promise<void> | null>(null)
+  const activeRef = useRef<Collection | null>(null)
+  activeRef.current = active
+  const dirty = serializeCollectionDocument(document) !== serializeCollectionDocument(baseline)
 
-  const reload = async () => { try { const data = await api.collections(); setCollections(data); setActive((old) => data.find((c) => c.id === old?.id) ?? null) } catch (e) { setError(e instanceof Error ? e.message : 'Could not load collections') } }
+  const reload = async () => { try { setCollections(await api.collections()) } catch (e) { setError(e instanceof Error ? e.message : 'Could not load collections') } }
   useEffect(() => { void Promise.all([reload(), api.reactions().then(setReactions)]) }, [])
-  useEffect(() => { setDocument(parseCollectionDocument(active?.markdown_content ?? '')) }, [active?.id, active?.markdown_content])
   const available = useMemo(() => reactions.filter((r) => !active?.reaction_links.some((link) => link.reaction.id === r.id) && `${r.display_code} ${r.name} ${r.aliases.map((alias) => alias.alias).join(' ')}`.toLowerCase().includes(addSearch.toLowerCase())).slice(0, 8), [reactions, active, addSearch])
 
   const create = async () => {
     const title = transform(window.prompt('Collection title')?.trim() ?? '', true); if (!title) return
-    try { const item = await api.createCollection({ title, description: null, markdown_content: serializeCollectionDocument({ version: 1, blocks: [{ id: crypto.randomUUID(), type: 'heading', level: 1, content: { text: title } }] }) }); await reload(); setActive(item) } catch (e) { setError(e instanceof Error ? e.message : 'Could not create collection') }
+    try { const item = await api.createCollection({ title, description: null, markdown_content: serializeCollectionDocument({ version: 1, blocks: [{ id: crypto.randomUUID(), type: 'heading', level: 1, content: { text: title } }] }) }); await reload(); setCollection(item) } catch (e) { setError(e instanceof Error ? e.message : 'Could not create collection') }
   }
-  const save = async () => {
-    if (!active) return
-    try { const item = await api.updateCollection(active.id, { title: active.title, description: active.description, markdown_content: serializeCollectionDocument(document) }); setActive(item); await reload() } catch (e) { setError(e instanceof Error ? e.message : 'Could not save collection') }
+  const save = () => {
+    if (saveInFlight.current) return saveInFlight.current
+    const target = activeRef.current
+    if (!target) return Promise.resolve()
+    const captured = document
+    const capturedSerialized = serializeCollectionDocument(captured)
+    const operation = (async () => {
+      setSaving(true); setError('')
+      try {
+        const item = await api.updateCollection(target.id, { title: target.title, description: target.description, markdown_content: capturedSerialized })
+        const savedBaseline = parseCollectionDocument(item.markdown_content)
+        setActive((current) => current?.id === item.id ? item : current)
+        setBaseline(savedBaseline)
+        setDocument((current) => reconcileSavedValue(current, capturedSerialized, savedBaseline, serializeCollectionDocument))
+        await reload()
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : 'Could not save collection'
+        setError(message); throw cause instanceof Error ? cause : new Error(message)
+      } finally { setSaving(false); saveInFlight.current = null }
+    })()
+    saveInFlight.current = operation
+    return operation
   }
+  const discard = () => { setDocument(baseline); setError('') }
+  useUnsavedEditor({ id: `collection:${active?.id ?? 'none'}:document`, label: active ? `${active.title} collection document` : 'Collection document', dirty, saving, save, discard, enabled: Boolean(active) })
   useEffect(() => {
     const handleSaveShortcut = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's' || !active) return
       event.preventDefault()
-      void save()
+      void save().catch(() => undefined)
     }
     window.addEventListener('keydown', handleSaveShortcut)
     return () => window.removeEventListener('keydown', handleSaveShortcut)
   })
   const rename = async () => {
     if (!active) return; const title = transform(window.prompt('Collection title', active.title)?.trim() ?? '', true); if (!title) return
-    const item = await api.updateCollection(active.id, { title, description: active.description, markdown_content: serializeCollectionDocument(document) }); setActive(item); await reload()
+    const item = await api.updateCollection(active.id, { title, description: active.description, markdown_content: active.markdown_content }); setActive(item); await reload()
   }
   const removeCollection = async () => {
     if (!active || !window.confirm(`Delete collection “${active.title}”? Reactions will not be deleted.`)) return
-    await api.deleteCollection(active.id); setActive(null); await reload()
+    await api.deleteCollection(active.id); setActive(null); setDocument(emptyDocument); setBaseline(emptyDocument); await reload()
   }
-  const setCollection = (item: Collection) => { setActive(item); setDocument(parseCollectionDocument(item.markdown_content)); setError('') }
+  const setCollection = (item: Collection) => {
+    const nextDocument = parseCollectionDocument(item.markdown_content)
+    setActive(item); setDocument(nextDocument); setBaseline(nextDocument); setError('')
+  }
   const add = async (reactionId: number) => { if (!active) return; const item = await api.addReaction(active.id, reactionId); setActive(item); setAddSearch(''); await reload() }
   const remove = async (reactionId: number) => { if (!active) return; const item = await api.removeReaction(active.id, reactionId); setActive(item); await reload() }
   const move = async (index: number, amount: number) => {
@@ -60,7 +94,7 @@ export function Collections({ onOpenReaction }: { onOpenReaction: (index: string
     </div></div>
 
   return <div className="workspace">
-    <div className="workspace-header"><button className="back" onClick={() => setActive(null)}>← Collections</button><div><span className="eyebrow">Study workspace</span><h1><FormattedText>{active.title}</FormattedText></h1></div><div className="button-row"><button className="secondary" onClick={() => void rename()}>Rename</button><button className="danger ghost" onClick={() => void removeCollection()}>Delete</button><button title="Save (⌘S)" onClick={() => void save()}>Save</button></div></div>
+    <div className="workspace-header"><button className="back" onClick={() => requestNavigation(() => setActive(null))}>← Collections</button><div><span className="eyebrow">Study workspace</span><h1><FormattedText>{active.title}</FormattedText></h1></div><div className="button-row"><button className="secondary" onClick={() => void rename()}>Rename</button><button className="danger ghost" onClick={() => requestNavigation(() => void removeCollection())}>Delete</button><button title="Save (⌘S)" disabled={saving || !dirty} onClick={() => void save().catch(() => undefined)}>{saving ? 'Saving…' : 'Save'}</button></div></div>
     {error && <div className="error page-error">{error}</div>}
     <div className="workspace-columns">
       <aside className="reaction-cards"><div className="panel-label">REACTION CARDS · {active.reaction_links.length}</div>

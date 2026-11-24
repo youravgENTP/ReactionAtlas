@@ -6,6 +6,7 @@ import type { Reaction, ReactionInput, ReactionRichTextInput, Role } from './typ
 import { useLatex } from './latex'
 import { FormattedText, RichFormattedText } from './inlineMarkup'
 import { reactionSeriesLabel } from './reactionSeries'
+import { useUnsavedChanges } from './UnsavedChanges'
 
 const sidebarPreferenceKey = 'reactionAtlas.library.sidebarCollapsed'
 
@@ -36,11 +37,12 @@ export function Library({ initialIndex, onOpenDrug }: { initialIndex?: string; o
   })
   const fileInput = useRef<HTMLInputElement>(null)
   const { transform } = useLatex()
+  const { requestNavigation, hasDirty } = useUnsavedChanges()
 
   const load = async (term = search) => {
     try {
       const data = await api.reactions(term); setReactions(data)
-      setSelected((current) => data.find((item) => item.id === current?.id) ?? data[0] ?? null); setError('')
+      setSelected((current) => hasDirty() && current ? current : data.find((item) => item.id === current?.id) ?? data[0] ?? null); setError('')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load reactions') }
   }
   useEffect(() => { const timer = window.setTimeout(() => void load(search), 180); return () => clearTimeout(timer) }, [search])
@@ -53,10 +55,11 @@ export function Library({ initialIndex, onOpenDrug }: { initialIndex?: string; o
     setEditing(null); await load(''); setSearch(''); setSelected(saved)
   }
   const saveDirect = async (data: ReactionRichTextInput) => {
-    if (!selected) return
+    if (!selected) throw new Error('No reaction selected')
     const saved = await api.updateReactionRichText(selected.id, data)
     setSelected(saved)
     setReactions((current) => current.map((item) => item.id === saved.id ? saved : item))
+    return saved
   }
   const remove = async () => {
     if (!selected || !window.confirm(`Delete ${selected.display_code} — ${selected.name}?`)) return
@@ -91,18 +94,18 @@ export function Library({ initialIndex, onOpenDrug }: { initialIndex?: string; o
       <input ref={fileInput} type="file" hidden accept=".json,.csv,application/json,text/csv" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importFile(file); e.target.value = '' }} />
       <button className="secondary" onClick={() => fileInput.current?.click()}>Import</button>
       <a className="button secondary" href="/api/export" download="reaction-atlas-export.json">Export</a>
-      <button onClick={() => setEditing('new')}>+ New reaction</button>
+      <button onClick={() => requestNavigation(() => setEditing('new'))}>+ New reaction</button>
     </div>
     {error && <div className="error page-error">{error}</div>}
     <div className={`library-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className="results-panel" aria-hidden={sidebarCollapsed}><div className="panel-label">{reactions.length} {reactions.length === 1 ? 'reaction' : 'reactions'}</div>
-        <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => setSelected(reaction)}>
+        <div className="result-list">{reactions.map((reaction) => <button key={reaction.id} className={`result-item ${selected?.id === reaction.id ? 'active' : ''}`} onClick={() => requestNavigation(() => setSelected(reaction))}>
           {reaction.image && <img className="result-thumbnail" src={reaction.image.content_url} alt="" />}<span className="index-line"><span className={`series-label ${reaction.series}`}>{reactionSeriesLabel[reaction.series]}</span><span className="rxn-index">{reaction.display_code}</span></span><strong><RichFormattedText text={reaction.name} html={reaction.rich_text.name} /></strong><small><RichFormattedText text={reaction.reaction_class || 'Unclassified'} html={reaction.rich_text.reaction_class} /></small>
           {search && <span className="component-hint">{reaction.aliases.filter((a) => a.alias.toLowerCase().includes(search.toLowerCase())).map((a) => `${a.alias} (${a.alias_type.replace('_', ' ')})`).concat(reaction.components.filter((c) => `${c.component.name} ${c.role}`.toLowerCase().includes(search.toLowerCase())).slice(0, 2).map((c) => c.component.name)).join(' · ')}</span>}
         </button>)}</div>
       </aside>
       <button type="button" className="library-sidebar-toggle" title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed((current) => !current)}>{sidebarCollapsed ? '>>' : '<<'}</button>
-      <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} onEdit={() => setEditing(selected)} onDelete={() => void remove()} onSave={saveDirect} onOpenDrug={onOpenDrug} /> : <div className="empty-state"><span>RA</span><h2>No reaction selected</h2><p>Search your atlas or create a reaction record.</p></div>}</main>
+      <main className="detail-panel">{selected ? <ReactionDetail reaction={selected} onEdit={() => requestNavigation(() => setEditing(selected))} onDelete={() => requestNavigation(() => void remove())} onSave={saveDirect} onOpenDrug={onOpenDrug} /> : <div className="empty-state"><span>RA</span><h2>No reaction selected</h2><p>Search your atlas or create a reaction record.</p></div>}</main>
     </div>
     {editing && <ReactionForm reaction={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} onSave={save} />}
   </div>
