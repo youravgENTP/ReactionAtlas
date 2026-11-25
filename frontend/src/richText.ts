@@ -1,54 +1,7 @@
 import { tokenizeInlineMarkup } from './scriptMarkup'
 import type { LatexShortcut } from './types'
-
-export function sanitizeRichHtml(html: string) {
-  const parsed = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
-  const root = parsed.body.firstElementChild!
-  const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'SUB', 'SUP', 'BR', 'DIV', 'SPAN', 'IMG', 'A'])
-  for (const element of [...root.querySelectorAll('*')]) {
-    if (!allowed.has(element.tagName)) { element.replaceWith(...element.childNodes); continue }
-    if (element.tagName === 'IMG') {
-      sanitizeManagedImage(element as HTMLImageElement)
-      continue
-    }
-    if (element.tagName === 'A') {
-      const href = safeInternalHref(element.getAttribute('href') ?? '')
-      if (!href) { element.replaceWith(...element.childNodes); continue }
-      for (const attribute of [...element.attributes]) element.removeAttribute(attribute.name)
-      element.setAttribute('href', href)
-      continue
-    }
-    for (const attribute of [...element.attributes]) if (attribute.name !== 'style') element.removeAttribute(attribute.name)
-    const style = element.getAttribute('style') ?? ''
-    const safe = style.split(';').map((part) => part.trim()).filter((part) => /^(color|background-color|text-decoration):\s*(#[0-9a-f]{3,6}|underline|line-through)$/i.test(part)).join(';')
-    if (safe) element.setAttribute('style', safe); else element.removeAttribute('style')
-  }
-  return root.innerHTML
-}
-
-function safeInternalHref(value: string) {
-  try {
-    const url = new URL(value, 'http://reactionatlas.local')
-    if (url.origin !== 'http://reactionatlas.local' || !/^\/(reactions|drugs|structures|collections)\//.test(url.pathname)) return ''
-    return `${url.pathname}${url.search}`
-  } catch { return '' }
-}
-
-function sanitizeManagedImage(image: HTMLImageElement) {
-  const source = image.getAttribute('src') ?? ''
-  const match = source.match(/^\/api\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/content$/i)
-  if (!match) { image.remove(); return }
-  const width = Math.min(100, Math.max(15, Number(image.dataset.widthPercent) || 55))
-  const align = image.dataset.align === 'left' || image.dataset.align === 'right' ? image.dataset.align : 'center'
-  const alt = (image.getAttribute('alt') ?? '').slice(0, 255)
-  for (const attribute of [...image.attributes]) image.removeAttribute(attribute.name)
-  image.setAttribute('src', `/api/media/${match[1]}/content`)
-  image.setAttribute('data-media-id', match[1])
-  image.setAttribute('data-width-percent', String(width))
-  image.setAttribute('data-align', align)
-  image.setAttribute('style', `width: ${width}%`)
-  image.setAttribute('alt', alt)
-}
+import { sanitizeRichHtml } from './richTextSanitizer'
+export { sanitizeRichHtml } from './richTextSanitizer'
 
 export function formatScriptHtml(html: string) {
   const parsed = new DOMParser().parseFromString(`<div>${sanitizeRichHtml(html)}</div>`, 'text/html')

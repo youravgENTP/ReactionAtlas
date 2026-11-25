@@ -198,10 +198,12 @@ function StudyRichInput({ value, multiline = false, editorId, placeholder, onFoc
   const command = (name: string, commandValue?: string) => {
     const node = editor.current; if (!node) return
     node.focus({ preventScroll: true })
-    if (savedRange.current) { const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(savedRange.current) }
+    if (savedRange.current && node.contains(savedRange.current.commonAncestorContainer)) { const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(savedRange.current) }
     if (name === 'superscript' && window.document.queryCommandState('subscript')) window.document.execCommand('subscript')
     if (name === 'subscript' && window.document.queryCommandState('superscript')) window.document.execCommand('superscript')
-    window.document.execCommand(name, false, commandValue); emit()
+    const applied = window.document.execCommand(name, false, commandValue)
+    if (name === 'hiliteColor' && !applied) window.document.execCommand('backColor', false, commandValue)
+    emit()
   }
   return <div className={`study-rich-input-wrap ${multiline ? 'multiline' : ''}`}>
     <div ref={editor} className="study-rich-input" contentEditable role="textbox" aria-multiline={multiline} aria-label={placeholder} suppressContentEditableWarning data-study-item={editorId} data-placeholder={placeholder} onFocus={onFocus} onClick={links.handleClick} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false; emit() }} onInput={() => { if (!composing.current) emit() }} onBlur={() => { composing.current = false; emit(true) }} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onKeyDown={(event) => {
@@ -211,7 +213,7 @@ function StudyRichInput({ value, multiline = false, editorId, placeholder, onFoc
       if (onKeyAction && (event.key === 'Enter' || event.key === 'Tab')) emit(true)
       if (onKeyAction) { onKeyAction(event, content()); if (event.defaultPrevented) return }
     }} />
-    <div className="study-rich-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('bold')} title="Bold"><b>B</b></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('italic')} title="Italic"><i>I</i></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('underline')} title="Underline"><u>U</u></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('superscript')} title="Superscript">x<sup>2</sup></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('subscript')} title="Subscript">x<sub>2</sub></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')} title="Highlight">▰</button><label title="Text color">A<input aria-label="Text color" type="color" onMouseDown={rememberSelection} onChange={(event) => command('foreColor', event.target.value)} /></label>{onRemove && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onRemove} title="Remove item">×</button>}</div>{links.picker}
+    <div className="study-rich-actions"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('bold')} title="Bold"><b>B</b></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('italic')} title="Italic"><i>I</i></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('underline')} title="Underline"><u>U</u></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('superscript')} title="Superscript">x<sup>2</sup></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('subscript')} title="Subscript">x<sub>2</sub></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')} title="Highlight">▰</button><label title="Text color">A<input aria-label="Text color" type="color" onPointerDown={rememberSelection} onMouseDown={rememberSelection} onChange={(event) => command('foreColor', event.target.value)} /></label>{onRemove && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={onRemove} title="Remove item">×</button>}</div>{links.picker}
   </div>
 }
 

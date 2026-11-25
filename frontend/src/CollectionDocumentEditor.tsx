@@ -106,11 +106,24 @@ export function RichEditor({ value, heading, singleLine = false, placeholder, al
     lastEmittedHtml.current = html
     onChange({ text, html })
   }
-  const links = useInternalLinkPicker(editor, () => emit())
-  const command = (name: string, value?: string) => { document.execCommand(name, false, value); emit() }
   const rememberSelection = () => {
     const selection = window.getSelection()
     if (editor.current && selection?.rangeCount && editor.current.contains(selection.anchorNode)) savedRange.current = selection.getRangeAt(0).cloneRange()
+  }
+  const links = useInternalLinkPicker(editor, () => emit())
+  const command = (name: string, value?: string) => {
+    const node = editor.current
+    if (!node) return
+    node.focus({ preventScroll: true })
+    if (savedRange.current && node.contains(savedRange.current.commonAncestorContainer)) {
+      const selection = window.getSelection()
+      selection?.removeAllRanges(); selection?.addRange(savedRange.current)
+    }
+    if (name === 'superscript' && document.queryCommandState('subscript')) document.execCommand('subscript')
+    if (name === 'subscript' && document.queryCommandState('superscript')) document.execCommand('superscript')
+    const applied = document.execCommand(name, false, value)
+    if (name === 'hiliteColor' && !applied) document.execCommand('backColor', false, value)
+    emit()
   }
   const uploadImage = async (file?: File, range?: Range | null) => {
     if (!allowImages || !file || !file.type.startsWith('image/')) return
@@ -175,7 +188,7 @@ export function RichEditor({ value, heading, singleLine = false, placeholder, al
   const imageWidth = Number(selectedImage?.dataset.widthPercent) || 55
   const imageAlign = selectedImage?.dataset.align === 'left' || selectedImage?.dataset.align === 'right' ? selectedImage.dataset.align : 'center'
   return <div className={`rich-editor ${heading ? `heading-${heading}` : ''} ${singleLine ? 'single-line' : ''} ${compact ? 'compact-editor' : ''}`}>
-    <div className="rich-toolbar"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('bold')}><b>B</b></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('italic')}><i>I</i></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('underline')}><u>U</u></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('superscript')}>x<sup>2</sup></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('subscript')}>x<sub>2</sub></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')}>Highlight</button><span title="Text color"><input aria-label="Text color" type="color" onChange={(e) => command('foreColor', e.target.value)} /></span>{allowImages && <button type="button" disabled={uploadingImage} onMouseDown={(e) => { e.preventDefault(); rememberSelection() }} onClick={() => imageInput.current?.click()}>{uploadingImage ? 'Uploading…' : 'Image'}</button>}</div>
+    <div className="rich-toolbar"><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('bold')}><b>B</b></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('italic')}><i>I</i></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('underline')}><u>U</u></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('superscript')}>x<sup>2</sup></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('subscript')}>x<sub>2</sub></button><button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => command('hiliteColor', '#fff1a8')}>Highlight</button><span title="Text color"><input aria-label="Text color" type="color" onPointerDown={rememberSelection} onMouseDown={rememberSelection} onChange={(e) => command('foreColor', e.target.value)} /></span>{allowImages && <button type="button" disabled={uploadingImage} onMouseDown={(e) => { e.preventDefault(); rememberSelection() }} onClick={() => imageInput.current?.click()}>{uploadingImage ? 'Uploading…' : 'Image'}</button>}</div>
     {allowImages && <input ref={imageInput} hidden type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={(event) => void uploadImage(event.target.files?.[0])} />}
     {selectedImage && <div className="rich-image-controls"><label>Width <input aria-label="Image width" type="range" min="15" max="100" value={imageWidth} onChange={(event) => updateImage(Number(event.target.value), imageAlign)} /></label><span>{imageWidth}%</span>{(['left', 'center', 'right'] as const).map((align) => <button type="button" className={imageAlign === align ? 'active' : ''} key={align} aria-label={`Align image ${align}`} onMouseDown={(event) => event.preventDefault()} onClick={() => updateImage(imageWidth, align)}>{align}</button>)}<button type="button" onMouseDown={(event) => event.preventDefault()} onClick={removeImage}>Remove</button></div>}
     {imageError && <small className="rich-image-error">{imageError}</small>}
